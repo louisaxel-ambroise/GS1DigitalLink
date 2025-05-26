@@ -30,6 +30,9 @@ namespace GS1DigitalLink.Utils
             [JsonPropertyName("regex")]
             public required string Pattern { get; set; }
 
+            // TODO: parse from JSON
+            public string[] Requires { get; set; } = new[] { "10" };
+
             public class AIComponent
             {
                 [JsonPropertyName("type")]

@@ -4,16 +4,20 @@ using System.Text;
 
 namespace GS1DigitalLink.Compression;
 
-public sealed class Compressor(GS1CompressionOptions options)
+public sealed class Compressor(GS1DigitalLinkOptions options)
 {
     public string CompressPartial(IEnumerable<AI> AIs)
     {
         var buffer = new StringBuilder();
+        var aiKeys = AIs.Where(x => options.ApplicationIdentifiers.Find(x.Key)?.IsPrimaryKey ?? false);
 
-        var aiKey = AIs.Single(x => options.ApplicationIdentifiers.Find(x.Key)?.IsPrimaryKey ?? false);
+        // Do not compress Primary Keys of the DigitalLink
+        foreach (var aiKey in aiKeys)
+        {
+            buffer.Append(aiKey.Key).Append('/').Append(aiKey.Value).Append('/');
+        }
 
-        buffer.Append(aiKey.Key).Append('/').Append(aiKey.Value).Append('/');
-        buffer.Append(Compress(AIs.Except([aiKey])));
+        buffer.Append(Compress(AIs.Except(aiKeys)));
 
         return buffer.ToString();
     }
@@ -30,7 +34,7 @@ public sealed class Compressor(GS1CompressionOptions options)
             }
             foreach (var ai in optimization.SequenceAIs.Select(x => AIs.Single(a => a.Key == x)))
             {
-                FormatApplicationIdentifier(ai, buffer, options);
+                FormatApplicationIdentifier(ai, buffer);
             }
 
             AIs = AIs.Where(x => !optimization.SequenceAIs.Contains(x.Key));
@@ -45,7 +49,7 @@ public sealed class Compressor(GS1CompressionOptions options)
 
             buffer = ai.Key.Aggregate(buffer, (buffer, c) => buffer.Append(Characters.GetAlphaBinary(c)));
 
-            FormatApplicationIdentifier(ai, buffer, options);
+            FormatApplicationIdentifier(ai, buffer);
         }
 
         var binaryValue = buffer.ToString().PadRight(buffer.Length + (6 - buffer.Length % 6), '0');
@@ -59,14 +63,10 @@ public sealed class Compressor(GS1CompressionOptions options)
         return buffer.ToString();
     }
 
-    private void FormatApplicationIdentifier(AI ai, StringBuilder buffer, GS1CompressionOptions options)
+    private void FormatApplicationIdentifier(AI ai, StringBuilder buffer)
     {
-        var applicationIdentifier = options.ApplicationIdentifiers.Find(ai.Key);
-
-        if (applicationIdentifier is null)
-        {
-            throw new InvalidOperationException($"{ai.Key} is not a GS1 AI");
-        }
+        var applicationIdentifier = options.ApplicationIdentifiers.Find(ai.Key)
+            ?? throw new InvalidOperationException($"{ai.Key} is not a GS1 AI");
 
         foreach (var component in applicationIdentifier.Components)
         {
@@ -153,16 +153,4 @@ public sealed class Compressor(GS1CompressionOptions options)
             buffer.Append(string.Concat(Encoding.ASCII.GetBytes(componentValue).Select(x => Convert.ToString(x, 2).PadLeft(7, '0'))));
         }
     }
-
-    //[GeneratedRegex("^[0-9a-f]+$")]
-    //private partial Regex LowerCaseHex { get; }
-
-    //[GeneratedRegex("^[0-9A-F]+$")]
-    //private partial Regex UpperCaseHex { get; }
-
-    //[GeneratedRegex("^[0-9]+$")]
-    //private partial Regex Numeric { get; }
-
-    //[GeneratedRegex("^[0-9a-zA-Z\\-_]+$")]
-    //private partial Regex UriSafeBase64 { get; }
 }
