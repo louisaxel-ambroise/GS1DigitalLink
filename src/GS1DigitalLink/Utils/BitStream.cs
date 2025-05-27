@@ -1,38 +1,37 @@
 ﻿using System.Text;
 
-namespace GS1DigitalLink.Utils
+namespace GS1DigitalLink.Utils;
+
+public class BitStream(string compressedString)
 {
-    public class BitStream(string compressedString)
+    private int _position;
+    private string _buffer = string.Empty;
+
+    public int Length => compressedString.Length*6;
+    public int Position => _position;
+    public string Current { get; private set; } = string.Empty;
+
+    public void Buffer(int length)
     {
-        private int _position;
-        private string _buffer = string.Empty;
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(Length, _position + length);
+    
+        var output = new StringBuilder(length);
 
-        public int Length => compressedString.Length*6;
-        public int Position => _position;
-        public string Current { get; private set; } = string.Empty;
-
-        public void Buffer(int length)
+        for (var i = 0; i < length; i++)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(Length, _position + length);
-        
-            var output = new StringBuilder(length);
-
-            for (var i = 0; i < length; i++)
-            {
-                output.Append(ReadChar());
-            }
-
-            Current = output.ToString();
+            output.Append(ReadChar());
         }
 
-        private char ReadChar()
-        {
-            if (_position % 6 == 0)
-            {
-                _buffer = Characters.GetBinary(compressedString.ElementAt(_position / 6));
-            }
+        Current = output.ToString();
+    }
 
-            return _buffer[_position++ % 6];
+    private char ReadChar()
+    {
+        if (_position % 6 == 0)
+        {
+            _buffer = Characters.GetBinary(compressedString.ElementAt(_position / 6));
         }
+
+        return _buffer[_position++ % 6];
     }
 }

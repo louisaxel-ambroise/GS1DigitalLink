@@ -4,7 +4,7 @@ using System.Text;
 
 namespace GS1DigitalLink.Compression;
 
-public sealed class Compressor(GS1DigitalLinkOptions options)
+public sealed class Compressor(GS1DigitalLinkOptions options) : ICompressor
 {
     public string CompressPartial(IEnumerable<AI> AIs)
     {
