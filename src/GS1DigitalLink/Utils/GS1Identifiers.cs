@@ -4,105 +4,98 @@ using System.Text.RegularExpressions;
 
 namespace GS1DigitalLink.Utils;
 
-public class GS1Identifiers
+public record GS1Identifiers
 {
     [JsonPropertyName("applicationIdentifiers")]
     public required IReadOnlyList<ApplicationIdentifier> ApplicationIdentifiers { get; init; }
 
     public Dictionary<string, int> CodeLength => ApplicationIdentifiers.GroupBy(x => x.Code[..2]).ToDictionary(x => x.Key, x => x.First().Code.Length);
+}
 
-    public ApplicationIdentifier? Find(string code)
+public record ApplicationIdentifier
+{
+    public static ApplicationIdentifier None = new() { Code = "00", Pattern = "", Components = [] };
+
+    [JsonPropertyName("applicationIdentifier")]
+    public required string Code { get; init; }
+
+    [JsonPropertyName("gs1DigitalLinkPrimaryKey")]
+    public bool IsPrimaryKey { get; init; }
+
+    [JsonPropertyName("components")]
+    public required IReadOnlyList<AIComponent> Components { get; init; }
+
+    [JsonPropertyName("regex")]
+    public required string Pattern { get; set; }
+
+    public class AIComponent
     {
-        return ApplicationIdentifiers.SingleOrDefault(x => x.Code == code);
-    }
+        [JsonPropertyName("type")]
+        public required string Charset { get; init; }
 
-    public class ApplicationIdentifier
-    {
-        [JsonPropertyName("applicationIdentifier")]
-        public required string Code { get; init; }
+        [JsonPropertyName("length")]
+        public required int Length { get; init; }
 
-        [JsonPropertyName("gs1DigitalLinkPrimaryKey")]
-        public bool IsPrimaryKey { get; init; }
+        [JsonPropertyName("fixedLength")]
+        public required bool FixedLength { get; init; }
 
-        [JsonPropertyName("components")]
-        public required IReadOnlyList<AIComponent> Components { get; init; }
+        [JsonPropertyName("checkDigit")]
+        public bool CheckDigit { get; init; }
 
-        [JsonPropertyName("regex")]
-        public required string Pattern { get; set; }
-
-        public class AIComponent
+        public string ReadFrom(BitStream inputStream)
         {
-            [JsonPropertyName("type")]
-            public required string Charset { get; init; }
+            var encoding = GetEncoding(Charset, inputStream);
+            var length = GetBitsLength(inputStream);
 
-            [JsonPropertyName("length")]
-            public required int Length { get; init; }
+            return encoding.Read(length, inputStream);
+        }
 
-            [JsonPropertyName("fixedLength")]
-            public required bool FixedLength { get; init; }
-
-            public string ReadFrom(BitStream inputStream)
+        private int GetBitsLength(BitStream stream)
+        {
+            if (FixedLength)
             {
-                var encoding = GetEncoding(Charset, inputStream);
-                var length = GetBitsLength(inputStream);
-
-                return encoding.Read(length, inputStream);
+                return Length;
             }
-
-            private int GetBitsLength(BitStream stream)
+            else
             {
-                if (FixedLength)
-                {
-                    return Length;
-                }
-                else
-                {
-                    var lengthBits = (int)Math.Ceiling(Math.Log(Length) / Math.Log(2));
-                    stream.Buffer(lengthBits);
+                var lengthBits = (int)Math.Ceiling(Math.Log(Length) / Math.Log(2));
+                stream.Buffer(lengthBits);
 
-                    return Convert.ToInt32(stream.Current, 2);
-                }
-            }
-
-            private static Encodings GetEncoding(string charset, BitStream stream)
-            {
-                if (charset == "N")
-                {
-                    return Encodings.Numeric;
-                }
-                else
-                {
-                    stream.Buffer(3);
-
-                    var encodingIndex = Convert.ToInt32(stream.Current, 2);
-
-                    return Encodings.Values.ElementAt(encodingIndex);
-                }
+                return Convert.ToInt32(stream.Current, 2);
             }
         }
 
-        internal string ReadFrom(BitStream inputStream)
+        private static Encodings GetEncoding(string charset, BitStream stream)
         {
-            var buffer = new StringBuilder();
-
-            foreach (var component in Components)
+            if (charset == "N")
             {
-                buffer.Append(component.ReadFrom(inputStream));
+                return Encodings.Numeric;
             }
+            else
+            {
+                stream.Buffer(3);
 
-            return buffer.ToString();
+                var encodingIndex = Convert.ToInt32(stream.Current, 2);
+
+                return Encodings.Values.ElementAt(encodingIndex);
+            }
         }
     }
 
-    public int GetLength(string code)
+    internal string ReadFrom(BitStream inputStream)
     {
-        return CodeLength.TryGetValue(code, out var length) ? length : -1;
+        var buffer = new StringBuilder();
+
+        foreach (var component in Components)
+        {
+            buffer.Append(component.ReadFrom(inputStream));
+        }
+
+        return buffer.ToString();
     }
 
-    public bool Validate(string code, string value)
+    public bool Validate(string value)
     {
-        var details = ApplicationIdentifiers.SingleOrDefault(x => x.Code == code);
-
-        return details is not null && Regex.IsMatch(value, $"^{details.Pattern}$");
+        return Regex.IsMatch(value, $"^{Pattern}$");
     }
 }

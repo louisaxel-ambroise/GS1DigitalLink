@@ -17,11 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\GS1DigitalLink\GS1DigitalLink.csproj" />
+    <Folder Include="Documents\" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Documents\" />
+    <ProjectReference Include="..\GS1DigitalLink\GS1DigitalLink.csproj" />
   </ItemGroup>
 
 </Project>

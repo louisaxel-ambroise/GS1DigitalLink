@@ -26,23 +26,4 @@ public sealed class StoredOptimisationCodes
             Usage = string.Empty
         };
     }
-
-    public bool TryGetOptimizedCode(byte input, out OptimizationCode optimizationCode)
-    {
-        optimizationCode = OptimizationCodes
-            .Where(x => input.ToString("X2") == x.Code)
-            .FirstOrDefault(OptimizationCode.Default);
-    
-        return optimizationCode != OptimizationCode.Default;
-    }
-
-    public bool TryGetBestOptimization(IEnumerable<string> ais, out OptimizationCode optimizationCode)
-    {
-        optimizationCode = OptimizationCodes
-            .Where(x => x.IsFulfilledBy(ais))
-            .OrderByDescending(x => x.CompressedAIsCount)
-            .FirstOrDefault(OptimizationCode.Default);
-    
-        return optimizationCode != OptimizationCode.Default;
-    }
 }

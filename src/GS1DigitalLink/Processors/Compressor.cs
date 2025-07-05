@@ -1,55 +1,60 @@
 ﻿using GS1DigitalLink.Model;
+using GS1DigitalLink.Model.Algorithms;
 using GS1DigitalLink.Utils;
 using System.Text;
 
 namespace GS1DigitalLink.Compression;
 
-public sealed class Compressor(GS1DigitalLinkOptions options) : ICompressor
+public sealed class Compressor : ICompressor
 {
-    public string CompressPartial(IEnumerable<AI> AIs)
+    public string CompressPartial(IEnumerable<Entry> entries, IGS1Algorithm algorithm)
     {
         var buffer = new StringBuilder();
-        var aiKeys = AIs.Where(x => options.ApplicationIdentifiers.Find(x.Key)?.IsPrimaryKey ?? false);
+        var keys = entries.Where(x => algorithm.FindAI(x.Key).IsPrimaryKey);
 
-        // Do not compress Primary Keys of the DigitalLink
-        foreach (var aiKey in aiKeys)
+        // Do not compress Primary Key(s) of the DigitalLink
+        foreach (var key in keys)
         {
-            buffer.Append(aiKey.Key).Append('/').Append(aiKey.Value).Append('/');
+            buffer.Append(key.Key).Append('/').Append(key.Value).Append('/');
         }
 
-        buffer.Append(Compress(AIs.Except(aiKeys)));
+        buffer.Append(Compress(entries.Except(keys), algorithm));
 
         return buffer.ToString();
     }
 
-    public string Compress(IEnumerable<AI> AIs)
+    // TODO: let the algorithm format the AIs, as the way to process might change between versions.
+    public string Compress(IEnumerable<Entry> entries, IGS1Algorithm algorithm)
     {
         var buffer = new StringBuilder();
 
-        if (options.OptimizationCodes.TryGetBestOptimization(AIs.Select(x => x.Key), out var optimization))
+        if (algorithm.TryGetBestOptimization(entries.Select(x => x.Key), out var optimization))
         {
             foreach (var c in optimization.Code)
             {
                 buffer.Append(Characters.GetAlphaBinary(c));
             }
-            foreach (var ai in optimization.SequenceAIs.Select(x => AIs.Single(a => a.Key == x)))
+            foreach (var element in optimization.SequenceAIs)
             {
-                FormatApplicationIdentifier(ai, buffer);
+                var applicationIdentifier = algorithm.FindAI(element);
+                var entry = entries.Single(a => a.Key == element);
+
+                FormatApplicationIdentifier(applicationIdentifier, entry.Value, buffer);
             }
 
-            AIs = AIs.Where(x => !optimization.SequenceAIs.Contains(x.Key));
+            entries = entries.Where(x => !optimization.SequenceAIs.Contains(x.Key));
         }
 
-        foreach (var ai in AIs)
+        foreach (var entry in entries)
         {
-            if (!ai.Key.IsNumeric())
+            if (!algorithm.TryGetAI(entry.Key, out var applicationIdentifier))
             {
-                throw new InvalidOperationException("Can only compress numeric AIs");
+                throw new InvalidOperationException($"Unknown AI: {entry.Key}");
             }
 
-            buffer = ai.Key.Aggregate(buffer, (buffer, c) => buffer.Append(Characters.GetAlphaBinary(c)));
+            buffer = entry.Key.Aggregate(buffer, (buffer, c) => buffer.Append(Characters.GetAlphaBinary(c)));
 
-            FormatApplicationIdentifier(ai, buffer);
+            FormatApplicationIdentifier(applicationIdentifier, entry.Value, buffer);
         }
 
         var binaryValue = buffer.ToString().PadRight(buffer.Length + (6 - buffer.Length % 6), '0');
@@ -63,18 +68,15 @@ public sealed class Compressor(GS1DigitalLinkOptions options) : ICompressor
         return buffer.ToString();
     }
 
-    private void FormatApplicationIdentifier(AI ai, StringBuilder buffer)
+    private static void FormatApplicationIdentifier(ApplicationIdentifier ai, string value, StringBuilder buffer)
     {
-        var applicationIdentifier = options.ApplicationIdentifiers.Find(ai.Key)
-            ?? throw new InvalidOperationException($"{ai.Key} is not a GS1 AI");
-
-        foreach (var component in applicationIdentifier.Components)
+        foreach (var component in ai.Components)
         {
             if (component.Charset == "N")
             {
                 if (component.FixedLength)
                 {
-                    var componentValue = ai.Value[..component.Length];
+                    var componentValue = value[..component.Length];
                     var c = Convert.ToString(Convert.ToInt64(componentValue, 10), 2);
                     var expectedLength = (int)Math.Ceiling(component.Length * Math.Log(10) / Math.Log(2) + 0.01);
 
@@ -82,9 +84,9 @@ public sealed class Compressor(GS1DigitalLinkOptions options) : ICompressor
                 }
                 else
                 {
-                    var c = Convert.ToString(Convert.ToInt32(ai.Value, 10), 2);
+                    var c = Convert.ToString(Convert.ToInt32(value, 10), 2);
                     var lengthSize = (int)Math.Ceiling(Math.Log(component.Length) / Math.Log(2) + 0.01);
-                    var l2 = Convert.ToString(ai.Value.Length, 2).PadLeft(lengthSize);
+                    var l2 = Convert.ToString(value.Length, 2).PadLeft(lengthSize);
                     var nl = (int)Math.Ceiling(lengthSize * Math.Log(10) / Math.Log(2) + 0.01);
 
                     buffer.Append(l2).Append(c.PadLeft(nl, '0'));
@@ -94,20 +96,20 @@ public sealed class Compressor(GS1DigitalLinkOptions options) : ICompressor
             {
                 if (component.FixedLength)
                 {
-                    var componentValue = ai.Value[..component.Length];
+                    var componentValue = value[..component.Length];
 
                     FormatValue(componentValue, buffer);
                 }
                 else
                 {
                     var nli = (int)Math.Ceiling(Math.Log(component.Length) / Math.Log(2) + 0.01);
-                    var li = Convert.ToString(ai.Value.Length, 2).PadLeft(nli, '0');
+                    var li = Convert.ToString(value.Length, 2).PadLeft(nli, '0');
 
-                    FormatValue(ai.Value, buffer, li);
+                    FormatValue(value, buffer, li);
                 }
             }
 
-            ai = ai with { Value = ai.Value[(component.FixedLength ? component.Length : Math.Min(component.Length, ai.Value.Length))..] };
+            value = value[(component.FixedLength ? component.Length : Math.Min(component.Length, value.Length))..];
         }
     }
 
