@@ -3,7 +3,7 @@ using GS1DigitalLink.Model.Algorithms;
 using GS1DigitalLink.Utils;
 using System.Text;
 
-namespace GS1DigitalLink.Compression;
+namespace GS1DigitalLink.Processors;
 
 public sealed class Compressor : ICompressor
 {

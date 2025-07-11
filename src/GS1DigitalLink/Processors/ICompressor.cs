@@ -1,7 +1,7 @@
 ﻿using GS1DigitalLink.Model;
 using GS1DigitalLink.Model.Algorithms;
 
-namespace GS1DigitalLink.Compression;
+namespace GS1DigitalLink.Processors;
 
 public interface ICompressor
 {
