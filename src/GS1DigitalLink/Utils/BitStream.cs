@@ -7,13 +7,14 @@ public class BitStream(string compressedString)
     private int _position;
     private string _buffer = string.Empty;
 
-    public int Length => compressedString.Length*6;
-    public int Position => _position;
-    public string Current { get; private set; } = string.Empty;
+    public int Remaining => compressedString.Length * 6 - _position;
+
+    public ReadOnlySpan<char> Current => _current.AsSpan();
+    private string _current = string.Empty;
 
     public void Buffer(int length)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(Length, _position + length);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(Remaining, length);
     
         var output = new StringBuilder(length);
 
@@ -22,7 +23,7 @@ public class BitStream(string compressedString)
             output.Append(ReadChar());
         }
 
-        Current = output.ToString();
+        _current = output.ToString();
     }
 
     private char ReadChar()

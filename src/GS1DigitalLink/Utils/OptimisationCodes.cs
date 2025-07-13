@@ -13,10 +13,7 @@ public sealed class StoredOptimisationCodes
 
         public int CompressedAIsCount => SequenceAIs.Length;
 
-        public bool IsFulfilledBy(IEnumerable<string> identifierCodes)
-        {
-            return SequenceAIs.All(identifierCodes.Contains);
-        }
+        public bool IsFulfilledBy(IEnumerable<string> identifierCodes) => SequenceAIs.All(identifierCodes.Contains);
 
         public static readonly OptimizationCode Default = new()
         {

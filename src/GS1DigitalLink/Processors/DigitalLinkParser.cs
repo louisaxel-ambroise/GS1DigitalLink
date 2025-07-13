@@ -1,24 +1,26 @@
 ﻿using GS1DigitalLink.Model;
+using GS1DigitalLink.Model.Algorithms;
 using GS1DigitalLink.Utils;
 using System.Text.RegularExpressions;
 using System.Web;
 
 namespace GS1DigitalLink.Processors;
 
-public sealed class DigitalLinkParser(ParserOptions options)
+public sealed class DigitalLinkParser(IGS1Algorithm algorithm)
 {
-    public void Parse(string input, DigitalLink result) => Parse(new Uri(input), result);
+    public DigitalLink Parse(string input) => Parse(new Uri(input));
 
-    public void Parse(Uri input, DigitalLink result)
+    public DigitalLink Parse(Uri input)
     {
-        result.OnParsedScheme(input.Scheme);
-        result.OnParsedHost(input.Host);
+        var builder = new DigitalLinkBuilder();
 
-        ProcessUriPath(input.AbsolutePath, result);
-        ProcessQueryString(input.Query, result);
+        ProcessUriPath(input.LocalPath, builder);
+        ProcessQueryString(input.Query, builder);
+
+        return builder.Build();
     }
 
-    private void ProcessQueryString(string query, DigitalLink result)
+    private void ProcessQueryString(string query, DigitalLinkBuilder result)
     {
         var keyValuePair = HttpUtility.ParseQueryString(query);
 
@@ -26,102 +28,63 @@ public sealed class DigitalLinkParser(ParserOptions options)
         {
             var value = keyValuePair.Get(key);
 
-            if (!string.IsNullOrEmpty(value) && options.DefaultAlgorithm.TryGetAI(key!, out var ai) && Regex.IsMatch(value, ai.Pattern))
+            if (!string.IsNullOrEmpty(value) && algorithm.TryGetAI(key!, out var ai) && Regex.IsMatch(value, ai.Pattern))
             {
-                result.OnParsedAI(key!, HttpUtility.UrlDecode(value));
-            }
-            else
-            {
-                result.OnParsedQuery(key!, value);
+                result.Add(ai!, HttpUtility.UrlDecode(value));
             }
         }
     }
 
-    private void ProcessUriPath(string absolutePath, DigitalLink result)
+    private void ProcessUriPath(string absolutePath, DigitalLinkBuilder result)
     {
         var parts = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
 
-        if (MayBePartiallyCompressedDigitalLink(parts, options))
+        if (MayBePartiallyCompressedDigitalLink(parts) && algorithm.TryGetAI(parts[^3], out var ai) && ai.IsPrimaryKey && ai.Validate(parts[^2]))
         {
-            if (parts.Length > 3)
-            {
-                result.OnParsedPath(string.Join('/', parts[..^3]));
-            }
-
-            result.OnParsedAI(parts[^3], parts[^2]);
+            result.Add(ai, parts[^2]);
             ParseCompressedValue(parts[^1], result);
         }
-        else if (MayBeUncompressedDigitalLink(parts, options, out var startIndex))
+        else if (MayBeUncompressedDigitalLink(parts, algorithm, out var registerAIs))
         {
-            if(startIndex > 0)
-            {
-                result.OnParsedPath(string.Join('/', parts[..startIndex]));
-            }
-
-            for (var i = startIndex; i <= parts.Length - 2; i += 2)
-            {
-                result.OnParsedAI(parts[i], parts[i + 1]);
-            }
+            registerAIs(result);
         }
         else if (MayBeFullyCompressedDigitalLink(parts))
         {
-            if (parts.Length > 1)
-            {
-                result.OnParsedPath(string.Join('/', parts[..^1]));
-            }
-
             ParseCompressedValue(parts[^1], result);
         }
         else
         {
-            result.OnError("Not a valid DigitalLink");
+            throw new Exception("Not a valid DigitalLink");
         }
     }
 
-    private void ParseCompressedValue(string compressedValue, DigitalLink result)
+    private void ParseCompressedValue(string compressedValue, DigitalLinkBuilder result)
     {
-        var algorithm = options.DefaultAlgorithm;
         var binaryStream = new BitStream(compressedValue);
 
-        while (binaryStream.Position + 7 < binaryStream.Length)
+        while (binaryStream.Remaining > 7)
         {
             binaryStream.Buffer(8);
 
             if (binaryStream.Current[..4] == "1101")
             {
-                result.Log("GS1 Algorithm version change");
-                algorithm = options.FindAlgorithm(binaryStream.Current[4..]);
+                //algorithm = options.FindAlgorithm(binaryStream.Current[4..]);
             }
             else if (binaryStream.Current[..4] == "1110")
             {
-                result.Log("Proprietary Algorithm version selection: " + binaryStream.Current[4..]);
-
-                algorithm = options.FindAlgorithm(binaryStream.Current[4..])
-                    ?? throw new InvalidOperationException("Unknown algorithm version " + binaryStream.Current[4..]);
+                //algorithm = options.FindAlgorithm(binaryStream.Current[4..]) ?? 
+                    throw new InvalidOperationException($"Unknown algorithm version {binaryStream.Current[4..]}");
             }
             else
             {
-                try
-                {
-                    algorithm.Parse(binaryStream, result, options);
-                }
-                catch (Exception ex)
-                {
-                    result.OnFatal(ex);
-                    return;
-                }
+                algorithm.Parse(binaryStream, result);
             }
         }
     }
 
-    private static bool MayBePartiallyCompressedDigitalLink(string[] parts, ParserOptions options)
+    private static bool MayBePartiallyCompressedDigitalLink(string[] parts)
     {
-        if (parts.Length >= 3 && parts[^1].IsUriSafeBase64())
-        {
-            return options.DefaultAlgorithm.TryGetAI(parts[^3], out var ai) && ai.IsPrimaryKey && ai.Validate(parts[^2]);
-        }
-
-        return false;
+        return parts.Length >= 3 && parts[^1].IsUriSafeBase64();
     }
 
     private static bool MayBeFullyCompressedDigitalLink(string[] parts)
@@ -129,24 +92,27 @@ public sealed class DigitalLinkParser(ParserOptions options)
         return parts.Length >= 1 && parts[^1].IsUriSafeBase64();
     }
 
-    private static bool MayBeUncompressedDigitalLink(string[] parts, ParserOptions options, out int index)
+    private static bool MayBeUncompressedDigitalLink(string[] parts, IGS1Algorithm algorithm, out Action<DigitalLinkBuilder> result)
     {
-        for (index = parts.Length - 2; index > 0; index -= 2)
-        {
-            if (!options.DefaultAlgorithm.TryGetAI(parts[index], out var ai))
-            {
-                return false;
-            }
-            if (!ai.Validate(parts[index+1]))
-            {
-                return false;
-            }
-            if (ai.IsPrimaryKey)
-            {
-                return true;
-            }
-        }
+        var parsedAIs = new List<(ApplicationIdentifier, string)>();
+        result = b => parsedAIs.ForEach((a) => b.Add(a.Item1, a.Item2));
 
-        return false;
+        Func<string[], bool> matchAI = _ => false;
+        
+        matchAI = parts =>
+        {
+            if (parts.Length < 2 || !algorithm.TryGetAI(parts[^2], out var ai) || !ai.Validate(parts[^1]))
+            {
+                return false;
+            }
+            if(ai.IsPrimaryKey || matchAI(parts[..^2]))
+            {
+                parsedAIs.Add((ai, parts[^1]));
+            }
+
+            return parsedAIs.Count > 0;
+        };
+
+        return matchAI(parts);
     }
 }

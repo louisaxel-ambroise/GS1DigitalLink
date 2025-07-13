@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\Documents\ApplicationIdentifiers.json" Link="Documents\ApplicationIdentifiers.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\Documents\OptimizationCodes.json" Link="Documents\OptimizationCodes.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GS1DigitalLink\GS1DigitalLink.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Documents\" />
+  </ItemGroup>
+
+</Project>

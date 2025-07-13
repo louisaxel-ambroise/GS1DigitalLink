@@ -1,49 +1,15 @@
 ﻿using GS1DigitalLink.Utils;
+using System.Text;
 using static GS1DigitalLink.Utils.StoredOptimisationCodes;
 
 namespace GS1DigitalLink.Model.Algorithms;
 
 public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationCodes, IReadOnlyList<ApplicationIdentifier> ApplicationIdentifiers) : IGS1Algorithm
 {
-    public bool TryGetAI(string code, out ApplicationIdentifier ai)
-    {
-        ai = FindAI(code);
-
-        return ai != ApplicationIdentifier.None;
-    }
-
-    public ApplicationIdentifier FindAI(string code)
-    {
-        return ApplicationIdentifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
-    }
-    public int GetLength(string code)
-    {
-        return CodeLength.TryGetValue(code, out var length) ? length : -1;
-    }
-
-    public bool TryGetOptimizedCode(byte input, out OptimizationCode optimizationCode)
-    {
-        optimizationCode = OptimizationCodes
-            .Where(x => input.ToString("X2") == x.Code)
-            .FirstOrDefault(OptimizationCode.Default);
-
-        return optimizationCode != OptimizationCode.Default;
-    }
-
-    public bool TryGetBestOptimization(IEnumerable<string> ais, out OptimizationCode optimizationCode)
-    {
-        optimizationCode = OptimizationCodes
-            .Where(x => x.IsFulfilledBy(ais))
-            .OrderByDescending(x => x.CompressedAIsCount)
-            .FirstOrDefault(OptimizationCode.Default);
-
-        return optimizationCode != OptimizationCode.Default;
-    }
-
-    public void Parse(BitStream binaryStream, DigitalLink result, ParserOptions options)
+    public void Parse(BitStream binaryStream, DigitalLinkBuilder result)
     {
         var ais = new List<string>();
-        var current = Convert.ToByte(binaryStream.Current, 2);
+        var current = Convert.ToByte(binaryStream.Current.ToString(), 2);
 
         if (!IsNumeric(current))
         {
@@ -61,18 +27,16 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
 
             if (length < 0)
             {
-                result.OnError("No AI matches the value " + code);
-                return;
+                throw new Exception("No AI matches the value " + code);
             }
             for (var i = 2; i < length; i++)
             {
                 binaryStream.Buffer(4);
-                var remain = Convert.ToByte(binaryStream.Current, 2);
+                var remain = Convert.ToByte(binaryStream.Current.ToString(), 2);
 
                 if (!IsNumeric(remain))
                 {
-                    result.OnError("AI code must only contain numeric value");
-                    return;
+                    throw new Exception("AI code must only contain numeric value");
                 }
 
                 code += remain.ToString("X1");
@@ -83,17 +47,106 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
 
         ais.ForEach(ai =>
         {
-            var value = ParseApplicationIdentifier(ai, binaryStream, options);
+            var value = ParseApplicationIdentifier(ai, binaryStream);
 
-            result.OnParsedAI(ai, value);
+            result.Add(value.Item1, value.Item2);
         });
     }
 
-    private string ParseApplicationIdentifier(string code, BitStream inputStream, ParserOptions options)
+    public string Format(IEnumerable<Entry> entries, DigitalLinkFormatterOptions options)
     {
-        var ai = FindAI(code);
+        var buffer = new StringBuilder();
+        var compression = new StringBuilder();
 
-        return ai.ReadFrom(inputStream);
+        if (options.CompressionType is DLCompressionType.Partial)
+        {
+            var key = entries.FirstOrDefault(x => TryGetAI(x.Key, out var ai) && ai.IsPrimaryKey);
+
+            if (key is null) throw new Exception("No AI key found in entries");
+
+            buffer.Append('/').Append(key.Key).Append('/').Append(key.Value).Append('/');
+
+            entries = entries.Except([key]);
+        }
+        else if(options.CompressionType is DLCompressionType.Full)
+        {
+            if (TryGetBestOptimization(entries.Select(x => x.Key), out var optimization))
+            {
+                foreach (var c in optimization.Code)
+                {
+                    compression.Append(Characters.GetAlphaBinary(c));
+                }
+                foreach (var element in optimization.SequenceAIs)
+                {
+                    if (TryGetAI(element, out var applicationIdentifier))
+                    {
+                        var entry = entries.Single(a => a.Key == element);
+
+                        FormatApplicationIdentifier(applicationIdentifier, entry.Value, compression);
+                    }
+                }
+
+                entries = entries.Where(x => !optimization.SequenceAIs.Contains(x.Key));
+            }
+        }
+
+        foreach (var entry in entries)
+        {
+            if (!TryGetAI(entry.Key, out var applicationIdentifier))
+            {
+                throw new InvalidOperationException($"Unknown AI: {entry.Key}");
+            }
+
+            compression = entry.Key.Aggregate(compression, (b, c) => b.Append(Characters.GetAlphaBinary(c)));
+
+            FormatApplicationIdentifier(applicationIdentifier, entry.Value, compression);
+        }
+
+        compression.Append(new string('0', 6 - buffer.Length % 6));
+        buffer.Append(compression.GetChars());
+
+        return buffer.ToString();
+    }
+
+    public bool TryGetAI(string code, out ApplicationIdentifier ai)
+    {
+        ai = ApplicationIdentifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
+
+        return ai != ApplicationIdentifier.None;
+    }
+
+    private int GetLength(string code)
+    {
+        return CodeLength.TryGetValue(code, out var length) ? length : -1;
+    }
+
+    private bool TryGetOptimizedCode(byte input, out OptimizationCode optimizationCode)
+    {
+        optimizationCode = OptimizationCodes
+            .Where(x => input.ToString("X2") == x.Code)
+            .FirstOrDefault(OptimizationCode.Default);
+
+        return optimizationCode != OptimizationCode.Default;
+    }
+
+    private bool TryGetBestOptimization(IEnumerable<string> ais, out OptimizationCode optimizationCode)
+    {
+        optimizationCode = OptimizationCodes
+            .Where(x => x.IsFulfilledBy(ais))
+            .OrderByDescending(x => x.CompressedAIsCount)
+            .FirstOrDefault(OptimizationCode.Default);
+
+        return optimizationCode != OptimizationCode.Default;
+    }
+
+    private (ApplicationIdentifier, string) ParseApplicationIdentifier(string code, BitStream inputStream)
+    {
+        if (!TryGetAI(code, out var ai))
+        {
+            throw new Exception("AI not found");
+        }
+     
+        return (ai, ai.ReadFrom(inputStream));
     }
 
     private static bool IsNumeric(byte current)
@@ -101,7 +154,93 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
         return current >> 4 <= 9 && (current & 0x0F) <= 9;
     }
 
-    private Dictionary<string, int> CodeLength => ApplicationIdentifiers.GroupBy(x => x.Code[..2]).ToDictionary(x => x.Key, x => x.First().Code.Length);
+    private static void FormatApplicationIdentifier(ApplicationIdentifier ai, string value, StringBuilder buffer)
+    {
+        foreach (var component in ai.Components)
+        {
+            if (component.Charset == "N")
+            {
+                if (component.FixedLength)
+                {
+                    var componentValue = value[..component.Length];
+                    var c = Convert.ToString(Convert.ToInt64(componentValue, 10), 2);
+                    var expectedLength = (int)Math.Ceiling(component.Length * Math.Log(10) / Math.Log(2) + 0.01);
 
-    public bool Matches(string code) => code == "0000";
+                    buffer.Append(c.PadLeft(expectedLength, '0'));
+                }
+                else
+                {
+                    var c = Convert.ToString(Convert.ToInt32(value, 10), 2);
+                    var lengthSize = (int)Math.Ceiling(Math.Log(component.Length) / Math.Log(2) + 0.01);
+                    var l2 = Convert.ToString(value.Length, 2).PadLeft(lengthSize);
+                    var nl = (int)Math.Ceiling(lengthSize * Math.Log(10) / Math.Log(2) + 0.01);
+
+                    buffer.Append(l2).Append(c.PadLeft(nl, '0'));
+                }
+            }
+            else
+            {
+                if (component.FixedLength)
+                {
+                    var componentValue = value[..component.Length];
+
+                    FormatValue(componentValue, buffer);
+                }
+                else
+                {
+                    var nli = (int)Math.Ceiling(Math.Log(component.Length) / Math.Log(2) + 0.01);
+                    var li = Convert.ToString(value.Length, 2).PadLeft(nli, '0');
+
+                    FormatValue(value, buffer, li);
+                }
+            }
+
+            value = value[(component.FixedLength ? component.Length : Math.Min(component.Length, value.Length))..];
+        }
+    }
+
+    private static void FormatValue(string componentValue, StringBuilder buffer, string? prefix = null)
+    {
+        if (componentValue.IsNumeric())
+        {
+            var nv = (int)Math.Ceiling(componentValue.Length * Math.Log(10) / Math.Log(2) + 0.01);
+
+            buffer.Append("000").Append(prefix);
+            buffer.Append(Convert.ToString(Convert.ToInt64(componentValue, 10), 2).PadLeft(nv, '0'));
+        }
+        else if (componentValue.IsLowerCaseHex())
+        {
+            buffer.Append("001").Append(prefix);
+
+            foreach (var c in componentValue)
+            {
+                buffer.Append(Characters.GetAlphaBinary(c));
+            }
+        }
+        else if (componentValue.IsUpperCaseHex())
+        {
+            buffer.Append("010").Append(prefix);
+
+            foreach (var c in componentValue)
+            {
+                buffer.Append(Characters.GetAlphaBinary(c));
+            }
+        }
+        else if (componentValue.IsUriSafeBase64())
+        {
+            buffer.Append("011").Append(prefix);
+
+            foreach (var c in componentValue)
+            {
+                buffer.Append(Characters.GetBinary(c));
+            }
+        }
+        else
+        {
+            buffer.Append("100").Append(prefix);
+            buffer.Append(string.Concat(Encoding.ASCII.GetBytes(componentValue).Select(x => Convert.ToString(x, 2).PadLeft(7, '0'))));
+        }
+    }
+
+    private Dictionary<string, int> CodeLength => ApplicationIdentifiers.GroupBy(x => x.Code[..2]).ToDictionary(x => x.Key, x => x.First().Code.Length);
 }

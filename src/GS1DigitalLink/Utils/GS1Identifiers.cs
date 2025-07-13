@@ -14,19 +14,22 @@ public record GS1Identifiers
 
 public record ApplicationIdentifier
 {
-    public static ApplicationIdentifier None = new() { Code = "00", Pattern = "", Components = [] };
+    public static ApplicationIdentifier None = new();
 
     [JsonPropertyName("applicationIdentifier")]
-    public required string Code { get; init; }
+    public string Code { get; init; } = string.Empty;
 
     [JsonPropertyName("gs1DigitalLinkPrimaryKey")]
     public bool IsPrimaryKey { get; init; }
 
     [JsonPropertyName("components")]
-    public required IReadOnlyList<AIComponent> Components { get; init; }
+    public IReadOnlyList<AIComponent> Components { get; init; } = [];
 
     [JsonPropertyName("regex")]
-    public required string Pattern { get; set; }
+    public string Pattern { get; set; } = string.Empty;
+
+    public List<string> Excludes { get; set; } = [];
+    public List<string> Requires { get; set; } = [];
 
     public class AIComponent
     {
@@ -61,7 +64,7 @@ public record ApplicationIdentifier
                 var lengthBits = (int)Math.Ceiling(Math.Log(Length) / Math.Log(2));
                 stream.Buffer(lengthBits);
 
-                return Convert.ToInt32(stream.Current, 2);
+                return Convert.ToInt32(stream.Current.ToString(), 2);
             }
         }
 
@@ -75,7 +78,7 @@ public record ApplicationIdentifier
             {
                 stream.Buffer(3);
 
-                var encodingIndex = Convert.ToInt32(stream.Current, 2);
+                var encodingIndex = Convert.ToInt32(stream.Current.ToString(), 2);
 
                 return Encodings.Values.ElementAt(encodingIndex);
             }
