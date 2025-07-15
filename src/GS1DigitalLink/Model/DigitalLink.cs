@@ -9,52 +9,81 @@ public record DigitalLink
 
 public class DigitalLinkBuilder
 {
-    private List<(ApplicationIdentifier, string)> _values = [];
+    private OrderedDictionary<ApplicationIdentifier, string> _qualifiers = [];
+    private OrderedDictionary<ApplicationIdentifier, string> _attributes = [];
 
-    public void Add(ApplicationIdentifier ai, string value)
+    public void Set(ApplicationIdentifier ai, string value)
     {
-        _values.Add((ai, value));
+        if(_qualifiers.TryGetValue(ai, out var existing))
+        {
+            if(existing != value)
+            {
+                throw new Exception($"Another value for AI was already added. Existing: '{existing}', Current: '{value}'");
+            }
+        }
+
+        _qualifiers[ai] = value;
     }
 
     public DigitalLink Build()
     {
         var result = new DigitalLink();
+        Validate();
 
-        foreach(var (key, value) in _values)
+        foreach(var (key, value) in _qualifiers)
         {
-            Validate(key, value);
             result.Result += $"({key.Code}){value}";
         }
 
         return result;
     }
 
-    private void Validate(ApplicationIdentifier ai, string value)
+    private void Validate()
     {
-        foreach(var exclusion in ai.Excludes)
+        if (_qualifiers.Count == 0 || !_qualifiers.First().Key.IsPrimaryKey)
         {
-            if(_values.Any(x => x.Item1.Code == exclusion))
-            {
-                throw new Exception($"AI {exclusion} cannot be used in conjuction with {ai.Code}");
-            }
+            throw new Exception("DL must contain at least one AI that is a PrimaryKey identifier");
         }
-        foreach (var requirement in ai.Requires)
+
+        var qualifiersValidator = new KeyQualifierValidator(_qualifiers.First().Key.Qualifiers);
+
+        foreach (var (ai, value) in _qualifiers)
         {
-            if (!_values.Any(x => x.Item1.Code == requirement))
+            if (ai.Requirements is not null && !ai.Requirements.IsFulfilledBy(_qualifiers.Keys.Select(x => x.Code)))
             {
-                throw new Exception($"AI {requirement} cannot be used in conjuction with {ai.Code}");
+                throw new Exception($"AI '{ai.Code}' required associations is not fulfilled");
+            }
+            if (ai.Exclusions is not null && ai.Exclusions.IsFulfilledBy(_qualifiers.Keys.Select(x => x.Code)))
+            {
+                throw new Exception($"AI '{ai.Code}' contains invalid AI pairing");
+            }
+
+            if (!ai.IsPrimaryKey && !qualifiersValidator.Validate(ai))
+            {
+                throw new Exception($"AI '{_qualifiers.First().Key.Code}' has invalid qualifier or qualifier order");
             }
         }
     }
 }
 
-public record DigitalLinkFormatterOptions
+internal class KeyQualifierValidator
 {
-    public DLCompressionType CompressionType { get; set; }
-}
+    private List<string[]>? _candidates;
 
-public enum DLCompressionType
-{
-    Full,
-    Partial
+    public KeyQualifierValidator(KeyQualifiers qualifiers)
+    {
+        _candidates = qualifiers?.AllowedQualifiers;
+    }
+
+    public bool Validate(ApplicationIdentifier ai)
+    {
+        if (_candidates is null) return true;
+
+        _candidates = _candidates
+            .Select(c => c.SkipWhile(e => e != ai.Code).ToArray())
+            .Where(c => c.Length > 0)
+            .ToList();
+
+        return _candidates.Count > 0;
+    }
 }

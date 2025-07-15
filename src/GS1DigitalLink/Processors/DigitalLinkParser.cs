@@ -1,20 +1,21 @@
 ﻿using GS1DigitalLink.Model;
 using GS1DigitalLink.Model.Algorithms;
 using GS1DigitalLink.Utils;
-using System.Text.RegularExpressions;
 using System.Web;
 
 namespace GS1DigitalLink.Processors;
 
-public sealed class DigitalLinkParser(IGS1Algorithm algorithm)
+public sealed class DigitalLinkParser(IDLAlgorithm algorithm)
 {
+    const char PathDelimiter = '/';
+
     public DigitalLink Parse(string input) => Parse(new Uri(input));
 
     public DigitalLink Parse(Uri input)
     {
         var builder = new DigitalLinkBuilder();
 
-        ProcessUriPath(input.LocalPath, builder);
+        ProcessUriPath(input.LocalPath.Trim(PathDelimiter), builder);
         ProcessQueryString(input.Query, builder);
 
         return builder.Build();
@@ -24,24 +25,24 @@ public sealed class DigitalLinkParser(IGS1Algorithm algorithm)
     {
         var keyValuePair = HttpUtility.ParseQueryString(query);
 
-        foreach (var key in keyValuePair.AllKeys.Where(k => !string.IsNullOrEmpty(k)))
+        foreach (var key in keyValuePair.AllKeys)
         {
-            var value = keyValuePair.Get(key);
+            var value = keyValuePair.Get(key) ?? string.Empty;
 
-            if (!string.IsNullOrEmpty(value) && algorithm.TryGetAI(key!, out var ai) && Regex.IsMatch(value, ai.Pattern))
+            if (algorithm.TryGetAI(key, out var ai) && ai.Validate(value))
             {
-                result.Add(ai!, HttpUtility.UrlDecode(value));
+                result.Set(ai!, HttpUtility.UrlDecode(value));
             }
         }
     }
 
     private void ProcessUriPath(string absolutePath, DigitalLinkBuilder result)
     {
-        var parts = absolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var parts = absolutePath.Split(PathDelimiter);
 
         if (MayBePartiallyCompressedDigitalLink(parts) && algorithm.TryGetAI(parts[^3], out var ai) && ai.IsPrimaryKey && ai.Validate(parts[^2]))
         {
-            result.Add(ai, parts[^2]);
+            result.Set(ai, parts[^2]);
             ParseCompressedValue(parts[^1], result);
         }
         else if (MayBeUncompressedDigitalLink(parts, algorithm, out var registerAIs))
@@ -87,15 +88,29 @@ public sealed class DigitalLinkParser(IGS1Algorithm algorithm)
         return parts.Length >= 3 && parts[^1].IsUriSafeBase64();
     }
 
+    /// <summary>
+    /// Verifies if 
+    /// </summary>
+    /// <param name="parts"></param>
+    /// <returns></returns>
     private static bool MayBeFullyCompressedDigitalLink(string[] parts)
     {
         return parts.Length >= 1 && parts[^1].IsUriSafeBase64();
     }
 
-    private static bool MayBeUncompressedDigitalLink(string[] parts, IGS1Algorithm algorithm, out Action<DigitalLinkBuilder> result)
+    /// <summary>
+    /// Recursive method to find a potential uncompressed DigitalLink.
+    /// The method scans through pair of query path elements and verifies if it is a potential valid AI key/value pair.
+    /// It stops as soon as it encounters an invalid pair or a PrimaryKey AI.
+    /// </summary>
+    /// <param name="parts">The parts retrieved from the URL being parsed</param>
+    /// <param name="algorithm">The DL algorithm (GS1 or proprietary) to use for parsing</param>
+    /// <param name="result">An action that registers all successfully parsed AIs to the DigitalLinkBuilder instance</param>
+    /// <returns>If the specified parts might be part of an uncompressed GS1 DL URI</returns>
+    private static bool MayBeUncompressedDigitalLink(string[] parts, IDLAlgorithm algorithm, out Action<DigitalLinkBuilder> result)
     {
         var parsedAIs = new List<(ApplicationIdentifier, string)>();
-        result = b => parsedAIs.ForEach((a) => b.Add(a.Item1, a.Item2));
+        result = b => parsedAIs.ForEach((a) => b.Set(a.Item1, a.Item2));
 
         Func<string[], bool> matchAI = _ => false;
         

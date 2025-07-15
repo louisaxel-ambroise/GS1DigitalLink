@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -28,8 +29,17 @@ public record ApplicationIdentifier
     [JsonPropertyName("regex")]
     public string Pattern { get; set; } = string.Empty;
 
-    public List<string> Excludes { get; set; } = [];
-    public List<string> Requires { get; set; } = [];
+    [JsonPropertyName("excludes")]
+    [JsonConverter(typeof(RequirementConverter<DisjuctionAIRequirementGroup>))]
+    public AIRequirements? Exclusions { get; set; }
+
+    [JsonPropertyName("requires")]
+    [JsonConverter(typeof(RequirementConverter<ConjuctionAIRequirementGroup>))]
+    public AIRequirements? Requirements { get; set; }
+
+    [JsonPropertyName("gs1DigitalLinkQualifiers")]
+    [JsonConverter(typeof(KeyQualifierConverter))]
+    public KeyQualifiers? Qualifiers { get; set; }
 
     public class AIComponent
     {
@@ -100,5 +110,157 @@ public record ApplicationIdentifier
     public bool Validate(string value)
     {
         return Regex.IsMatch(value, $"^{Pattern}$");
+    }
+}
+
+public class KeyQualifiers
+{
+    public List<string[]> AllowedQualifiers { get; set; } = [];
+
+    internal bool Validate(ApplicationIdentifier ai)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class AIRequirements
+{
+    public AIRequirementGroup[] Groups { get; set; }
+
+    internal bool IsFulfilledBy(IEnumerable<string> values)
+    {
+        return Groups.Any(g => g.IsFulfilledBy(values));
+    }
+}
+
+public abstract class AIRequirementGroup
+{
+    public List<string> RequiredAIs { get; set; } = [];
+
+    public abstract bool IsFulfilledBy(IEnumerable<string> values);
+}
+
+public class ConjuctionAIRequirementGroup : AIRequirementGroup
+{
+    public override bool IsFulfilledBy(IEnumerable<string> values)
+    {
+        return RequiredAIs.All(ai => values.Any(v => v == ai));
+    }
+}
+
+public class DisjuctionAIRequirementGroup : AIRequirementGroup
+{
+    public override bool IsFulfilledBy(IEnumerable<string> values)
+    {
+        return RequiredAIs.Any(ai => values.Any(v => v == ai));
+    }
+}
+
+public class KeyQualifierConverter : JsonConverter<KeyQualifiers>
+{
+    public override KeyQualifiers? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var qualifierLists = new List<string[]>();
+        var groups = new List<string>();
+        var depth = 1;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                groups.Add(reader.GetString()!);
+            }
+            else if (reader.TokenType == JsonTokenType.StartArray)
+            {
+                groups = new List<string>();
+                depth++;
+            }
+            else if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                depth--;
+
+                qualifierLists.Add(groups.ToArray());
+
+                if (depth == 0) break;
+            }
+        }
+
+        return new KeyQualifiers { AllowedQualifiers = qualifierLists };
+    }
+
+    public override void Write(Utf8JsonWriter writer, KeyQualifiers value, JsonSerializerOptions options)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : AIRequirementGroup, new()
+{
+    public override AIRequirements? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        var groups = new List<AIRequirementGroup>();
+        var group = new T();
+        var depth = 1;
+
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                if (depth == 1)
+                {
+                    groups.Add(new DisjuctionAIRequirementGroup() { RequiredAIs = [reader.GetString()!] });
+                }
+                else
+                {
+                    group.RequiredAIs.Add(reader.GetString()!);
+                }
+            }
+            else if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                var start = 0;
+                var end = 0;
+
+                while (reader.TokenType != JsonTokenType.EndObject)
+                {
+                    reader.Read();
+                    if (reader.TokenType == JsonTokenType.PropertyName && reader.GetString() == "start")
+                    {
+                        reader.Read();
+                        start = int.Parse(reader.GetString());
+                    }
+                    else if (reader.TokenType == JsonTokenType.PropertyName && reader.GetString() == "end")
+                    {
+                        reader.Read();
+                        end = int.Parse(reader.GetString());
+                    }
+                }
+
+                if(start > 0 && end > 0 && start < end)
+                {
+                    groups.Add(new DisjuctionAIRequirementGroup() { RequiredAIs = Enumerable.Range(start, end - start + 1).Select(i => i.ToString()).ToList() });
+                }
+            }
+            else if (reader.TokenType == JsonTokenType.StartArray)
+            {
+                group = new T();
+                depth++;
+            }
+            else if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                depth--;
+
+                if (group.RequiredAIs.Any()) { 
+                groups.Add(group);}
+
+                if (depth == 0) break;
+            }
+        }
+
+        return new AIRequirements { Groups = groups.ToArray() };
+    }
+
+    public override void Write(Utf8JsonWriter writer, AIRequirements value, JsonSerializerOptions options)
+    {
+        throw new NotImplementedException();
     }
 }

@@ -4,7 +4,7 @@ using static GS1DigitalLink.Utils.StoredOptimisationCodes;
 
 namespace GS1DigitalLink.Model.Algorithms;
 
-public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationCodes, IReadOnlyList<ApplicationIdentifier> ApplicationIdentifiers) : IGS1Algorithm
+public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationCodes, IReadOnlyList<ApplicationIdentifier> ApplicationIdentifiers) : IDLAlgorithm
 {
     public void Parse(BitStream binaryStream, DigitalLinkBuilder result)
     {
@@ -49,7 +49,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
         {
             var value = ParseApplicationIdentifier(ai, binaryStream);
 
-            result.Add(value.Item1, value.Item2);
+            result.Set(value.Item1, value.Item2);
         });
     }
 
@@ -108,7 +108,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
         return buffer.ToString();
     }
 
-    public bool TryGetAI(string code, out ApplicationIdentifier ai)
+    public bool TryGetAI(string? code, out ApplicationIdentifier ai)
     {
         ai = ApplicationIdentifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
 
@@ -132,9 +132,8 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
     private bool TryGetBestOptimization(IEnumerable<string> ais, out OptimizationCode optimizationCode)
     {
         optimizationCode = OptimizationCodes
-            .Where(x => x.IsFulfilledBy(ais))
-            .OrderByDescending(x => x.CompressedAIsCount)
-            .FirstOrDefault(OptimizationCode.Default);
+            .OrderByDescending(x => x.Priority)
+            .FirstOrDefault(x => x.IsFulfilledBy(ais), OptimizationCode.Default);
 
         return optimizationCode != OptimizationCode.Default;
     }

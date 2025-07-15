@@ -22,7 +22,6 @@ public class BitStream(string compressedString)
         {
             output.Append(ReadChar());
         }
-
         _current = output.ToString();
     }
 

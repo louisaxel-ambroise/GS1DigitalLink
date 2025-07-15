@@ -11,7 +11,7 @@ public sealed class StoredOptimisationCodes
         public required string Meaning { get; init; }
         public required string Usage { get; init; }
 
-        public int CompressedAIsCount => SequenceAIs.Length;
+        public int Priority => SequenceAIs.Length;
 
         public bool IsFulfilledBy(IEnumerable<string> identifierCodes) => SequenceAIs.All(identifierCodes.Contains);
 
