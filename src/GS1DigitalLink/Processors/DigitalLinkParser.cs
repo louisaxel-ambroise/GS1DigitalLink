@@ -29,9 +29,9 @@ public sealed class DigitalLinkParser(IDLAlgorithm algorithm)
         {
             var value = keyValuePair.Get(key) ?? string.Empty;
 
-            if (algorithm.TryGetAI(key, out var ai) && ai.Validate(value))
+            if (algorithm.TryGetDataAttribute(key, out var ai) && ai.Validate(value))
             {
-                result.Set(ai!, HttpUtility.UrlDecode(value));
+                result.Set(ai!, HttpUtility.UrlDecode(value), IdentifierType.Attribute);
             }
         }
     }
@@ -40,9 +40,9 @@ public sealed class DigitalLinkParser(IDLAlgorithm algorithm)
     {
         var parts = absolutePath.Split(PathDelimiter);
 
-        if (MayBePartiallyCompressedDigitalLink(parts) && algorithm.TryGetAI(parts[^3], out var ai) && ai.IsPrimaryKey && ai.Validate(parts[^2]))
+        if (MayBePartiallyCompressedDigitalLink(parts) && algorithm.TryGetQualifier(parts[^3], out var ai) && ai.IsPrimaryKey && ai.Validate(parts[^2]))
         {
-            result.Set(ai, parts[^2]);
+            result.Set(ai, parts[^2], IdentifierType.Qualifier);
             ParseCompressedValue(parts[^1], result);
         }
         else if (MayBeUncompressedDigitalLink(parts, algorithm, out var registerAIs))
@@ -110,13 +110,13 @@ public sealed class DigitalLinkParser(IDLAlgorithm algorithm)
     private static bool MayBeUncompressedDigitalLink(string[] parts, IDLAlgorithm algorithm, out Action<DigitalLinkBuilder> result)
     {
         var parsedAIs = new List<(ApplicationIdentifier, string)>();
-        result = b => parsedAIs.ForEach((a) => b.Set(a.Item1, a.Item2));
+        result = b => parsedAIs.ForEach((a) => b.Set(a.Item1, a.Item2, IdentifierType.Qualifier));
 
         Func<string[], bool> matchAI = _ => false;
         
         matchAI = parts =>
         {
-            if (parts.Length < 2 || !algorithm.TryGetAI(parts[^2], out var ai) || !ai.Validate(parts[^1]))
+            if (parts.Length < 2 || !algorithm.TryGetQualifier(parts[^2], out var ai) || !ai.Validate(parts[^1]))
             {
                 return false;
             }

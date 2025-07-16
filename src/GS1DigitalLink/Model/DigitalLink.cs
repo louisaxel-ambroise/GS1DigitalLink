@@ -7,22 +7,35 @@ public record DigitalLink
     public string Result { get; set; } = "";
 }
 
+public class RegisteredIdentifier
+{
+    public ApplicationIdentifier Ai { get; set; }
+    public string Value { get; set; }
+    public IdentifierType Type { get; set; }
+}
+
+public enum IdentifierType
+{
+    Qualifier,
+    Attribute
+}
+
 public class DigitalLinkBuilder
 {
-    private OrderedDictionary<ApplicationIdentifier, string> _qualifiers = [];
-    private OrderedDictionary<ApplicationIdentifier, string> _attributes = [];
+    private List<RegisteredIdentifier> _identifiers = [];
 
-    public void Set(ApplicationIdentifier ai, string value)
+    public void Set(ApplicationIdentifier ai, string value, IdentifierType type)
     {
-        if(_qualifiers.TryGetValue(ai, out var existing))
-        {
-            if(existing != value)
-            {
-                throw new Exception($"Another value for AI was already added. Existing: '{existing}', Current: '{value}'");
-            }
-        }
+        var existing = _identifiers.SingleOrDefault(i => i.Ai == ai);
 
-        _qualifiers[ai] = value;
+        if (existing is not null && existing.Value != value)
+        {
+            throw new Exception($"Another value for AI was already added. Existing: '{existing}', Current: '{value}'");
+        }
+        else if (existing is null)
+        {
+            _identifiers.Add(new() { Ai = ai, Value = value, Type = type });
+        }
     }
 
     public DigitalLink Build()
@@ -30,9 +43,9 @@ public class DigitalLinkBuilder
         var result = new DigitalLink();
         Validate();
 
-        foreach(var (key, value) in _qualifiers)
+        foreach(var identifier in _identifiers)
         {
-            result.Result += $"({key.Code}){value}";
+            result.Result += $"({identifier.Ai.Code}){identifier.Value}";
         }
 
         return result;
@@ -40,27 +53,27 @@ public class DigitalLinkBuilder
 
     private void Validate()
     {
-        if (_qualifiers.Count == 0 || !_qualifiers.First().Key.IsPrimaryKey)
+        if (_identifiers.Count == 0 || !_identifiers.First().Ai.IsPrimaryKey)
         {
             throw new Exception("DL must contain at least one AI that is a PrimaryKey identifier");
         }
 
-        var qualifiersValidator = new KeyQualifierValidator(_qualifiers.First().Key.Qualifiers);
+        var qualifiersValidator = new KeyQualifierValidator(_identifiers.First().Ai.Qualifiers);
 
-        foreach (var (ai, value) in _qualifiers)
+        foreach (var identifier in _identifiers)
         {
-            if (ai.Requirements is not null && !ai.Requirements.IsFulfilledBy(_qualifiers.Keys.Select(x => x.Code)))
+            if (!identifier.Ai.Requirements.IsEmpty && !identifier.Ai.Requirements.IsFulfilledBy(_identifiers.Select(x => x.Ai.Code)))
             {
-                throw new Exception($"AI '{ai.Code}' required associations is not fulfilled");
+                throw new Exception($"AI '{identifier.Ai.Code}' required associations is not fulfilled");
             }
-            if (ai.Exclusions is not null && ai.Exclusions.IsFulfilledBy(_qualifiers.Keys.Select(x => x.Code)))
+            if (!identifier.Ai.Exclusions.IsEmpty && identifier.Ai.Exclusions.IsFulfilledBy(_identifiers.Except([identifier]).Select(x => x.Ai.Code)))
             {
-                throw new Exception($"AI '{ai.Code}' contains invalid AI pairing");
+                throw new Exception($"AI '{identifier.Ai.Code}' contains invalid AI pairing");
             }
 
-            if (!ai.IsPrimaryKey && !qualifiersValidator.Validate(ai))
+            if (!identifier.Ai.IsPrimaryKey && identifier.Type == IdentifierType.Qualifier && !qualifiersValidator.Validate(identifier))
             {
-                throw new Exception($"AI '{_qualifiers.First().Key.Code}' has invalid qualifier or qualifier order");
+                throw new Exception($"AI '{_identifiers.First().Ai.Code}' has invalid qualifier or qualifier order");
             }
         }
     }
@@ -75,12 +88,12 @@ internal class KeyQualifierValidator
         _candidates = qualifiers?.AllowedQualifiers;
     }
 
-    public bool Validate(ApplicationIdentifier ai)
+    public bool Validate(RegisteredIdentifier ai)
     {
-        if (_candidates is null) return true;
+        if (_candidates is null || ai.Type != IdentifierType.Qualifier) return true;
 
         _candidates = _candidates
-            .Select(c => c.SkipWhile(e => e != ai.Code).ToArray())
+            .Select(c => c.SkipWhile(e => e != ai.Ai.Code).ToArray())
             .Where(c => c.Length > 0)
             .ToList();
 

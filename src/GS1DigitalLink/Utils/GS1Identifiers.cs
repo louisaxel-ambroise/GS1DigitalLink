@@ -31,11 +31,11 @@ public record ApplicationIdentifier
 
     [JsonPropertyName("excludes")]
     [JsonConverter(typeof(RequirementConverter<DisjuctionAIRequirementGroup>))]
-    public AIRequirements? Exclusions { get; set; }
+    public AIRequirements Exclusions { get; set; } = new();
 
     [JsonPropertyName("requires")]
     [JsonConverter(typeof(RequirementConverter<ConjuctionAIRequirementGroup>))]
-    public AIRequirements? Requirements { get; set; }
+    public AIRequirements Requirements { get; set; } = new();
 
     [JsonPropertyName("gs1DigitalLinkQualifiers")]
     [JsonConverter(typeof(KeyQualifierConverter))]
@@ -125,7 +125,9 @@ public class KeyQualifiers
 
 public class AIRequirements
 {
-    public AIRequirementGroup[] Groups { get; set; }
+    public AIRequirementGroup[] Groups { get; set; } = [];
+
+    public bool IsEmpty => Groups.Length == 0;
 
     internal bool IsFulfilledBy(IEnumerable<string> values)
     {
@@ -135,12 +137,15 @@ public class AIRequirements
 
 public abstract class AIRequirementGroup
 {
-    public List<string> RequiredAIs { get; set; } = [];
-
     public abstract bool IsFulfilledBy(IEnumerable<string> values);
 }
 
-public class ConjuctionAIRequirementGroup : AIRequirementGroup
+public abstract class AIListRequirementGroup : AIRequirementGroup
+{
+    public List<string> RequiredAIs { get; set; } = [];
+}
+
+public class ConjuctionAIRequirementGroup : AIListRequirementGroup
 {
     public override bool IsFulfilledBy(IEnumerable<string> values)
     {
@@ -148,11 +153,22 @@ public class ConjuctionAIRequirementGroup : AIRequirementGroup
     }
 }
 
-public class DisjuctionAIRequirementGroup : AIRequirementGroup
+public class DisjuctionAIRequirementGroup : AIListRequirementGroup
 {
     public override bool IsFulfilledBy(IEnumerable<string> values)
     {
         return RequiredAIs.Any(ai => values.Any(v => v == ai));
+    }
+}
+
+public class RangeAIRequirementGroup : AIRequirementGroup
+{
+    public int Start { get; set; }
+    public int End { get; set; }
+
+    public override bool IsFulfilledBy(IEnumerable<string> values)
+    {
+        return values.Select(int.Parse).Any(v => v >= Start && v <= End);
     }
 }
 
@@ -194,7 +210,7 @@ public class KeyQualifierConverter : JsonConverter<KeyQualifiers>
     }
 }
 
-public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : AIRequirementGroup, new()
+public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : AIListRequirementGroup, new()
 {
     public override AIRequirements? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -237,7 +253,7 @@ public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : A
 
                 if(start > 0 && end > 0 && start < end)
                 {
-                    groups.Add(new DisjuctionAIRequirementGroup() { RequiredAIs = Enumerable.Range(start, end - start + 1).Select(i => i.ToString()).ToList() });
+                    groups.Add(new RangeAIRequirementGroup() { Start = start, End = end });
                 }
             }
             else if (reader.TokenType == JsonTokenType.StartArray)

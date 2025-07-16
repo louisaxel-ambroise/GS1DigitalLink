@@ -4,8 +4,21 @@ using static GS1DigitalLink.Utils.StoredOptimisationCodes;
 
 namespace GS1DigitalLink.Model.Algorithms;
 
-public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationCodes, IReadOnlyList<ApplicationIdentifier> ApplicationIdentifiers) : IDLAlgorithm
+public sealed class GS1AlgorithmV1 : IDLAlgorithm
 {
+    public IReadOnlyList<OptimizationCode> OptimizationCodes { get; }
+    public IReadOnlyList<ApplicationIdentifier> ApplicationIdentifiers { get; }
+    public IReadOnlyList<ApplicationIdentifier> Qualifiers { get; }
+    public IReadOnlyList<ApplicationIdentifier> DataAttributes { get; }
+
+    public GS1AlgorithmV1(IReadOnlyList<OptimizationCode> optimizationCodes, IReadOnlyList<ApplicationIdentifier> applicationIdentifiers)
+    {
+        OptimizationCodes = optimizationCodes;
+        ApplicationIdentifiers = applicationIdentifiers;
+        Qualifiers = ApplicationIdentifiers.Where(ai => ai.IsPrimaryKey || ApplicationIdentifiers.SelectMany(i => i.Qualifiers?.AllowedQualifiers?.SelectMany(a => a) ?? []).Contains(ai.Code)).ToList();
+        DataAttributes = ApplicationIdentifiers.Except(Qualifiers).ToList();
+    }
+
     public void Parse(BitStream binaryStream, DigitalLinkBuilder result)
     {
         var ais = new List<string>();
@@ -49,7 +62,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
         {
             var value = ParseApplicationIdentifier(ai, binaryStream);
 
-            result.Set(value.Item1, value.Item2);
+            result.Set(value.Item1, value.Item2, IdentifierType.Qualifier);
         });
     }
 
@@ -60,7 +73,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
 
         if (options.CompressionType is DLCompressionType.Partial)
         {
-            var key = entries.FirstOrDefault(x => TryGetAI(x.Key, out var ai) && ai.IsPrimaryKey);
+            var key = entries.FirstOrDefault(x => TryGetQualifier(x.Key, out var ai) && ai.IsPrimaryKey);
 
             if (key is null) throw new Exception("No AI key found in entries");
 
@@ -78,7 +91,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
                 }
                 foreach (var element in optimization.SequenceAIs)
                 {
-                    if (TryGetAI(element, out var applicationIdentifier))
+                    if (TryGetQualifier(element, out var applicationIdentifier))
                     {
                         var entry = entries.Single(a => a.Key == element);
 
@@ -92,7 +105,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
 
         foreach (var entry in entries)
         {
-            if (!TryGetAI(entry.Key, out var applicationIdentifier))
+            if (!TryGetQualifier(entry.Key, out var applicationIdentifier))
             {
                 throw new InvalidOperationException($"Unknown AI: {entry.Key}");
             }
@@ -108,9 +121,15 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
         return buffer.ToString();
     }
 
-    public bool TryGetAI(string? code, out ApplicationIdentifier ai)
+    public bool TryGetQualifier(string? code, out ApplicationIdentifier ai)
     {
-        ai = ApplicationIdentifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
+        ai = Qualifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
+
+        return ai != ApplicationIdentifier.None;
+    }
+    public bool TryGetDataAttribute(string? code, out ApplicationIdentifier ai)
+    {
+        ai = DataAttributes.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
 
         return ai != ApplicationIdentifier.None;
     }
@@ -140,7 +159,7 @@ public sealed class GS1AlgorithmV1(IReadOnlyList<OptimizationCode> OptimizationC
 
     private (ApplicationIdentifier, string) ParseApplicationIdentifier(string code, BitStream inputStream)
     {
-        if (!TryGetAI(code, out var ai))
+        if (!TryGetQualifier(code, out var ai))
         {
             throw new Exception("AI not found");
         }
