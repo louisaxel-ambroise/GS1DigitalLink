@@ -11,7 +11,7 @@ public record Encodings(Func<int, BitStream, string> Read)
         var bitsToRead = (int)Math.Ceiling(length * Math.Log(10) / Math.Log(2));
         stream.Buffer(bitsToRead);
 
-        return Convert.ToInt64(stream.Current, 2).ToString().PadLeft(length, '0');
+        return Convert.ToInt64(stream.Current.ToString(), 2).ToString().PadLeft(length, '0');
     });
 
     public static readonly Encodings LowerAlpha = new((length, stream) =>
@@ -52,7 +52,7 @@ public record Encodings(Func<int, BitStream, string> Read)
         var bytes = Enumerable.Range(1, length).Select(_ =>
         {
             stream.Buffer(7);
-            return Convert.ToByte(stream.Current, 2);
+            return Convert.ToByte(stream.Current.ToString(), 2);
         });
 
         return Encoding.ASCII.GetString([.. bytes]);

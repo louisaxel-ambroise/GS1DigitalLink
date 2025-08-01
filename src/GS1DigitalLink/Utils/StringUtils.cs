@@ -13,25 +13,14 @@ static class StringUtils
 
     internal static bool IsNumeric(this string value) 
         => value.All(x => x >= '0' && x <= '9');
-}
 
-public static class CheckDigitHelper
-{
-    public static void EnsureIsValid(string input)
+    public static string ToNumericString(this byte value)
     {
-        var weightedSum = 0;
-
-        for (var i = 0; i < input.Length-1; i++)
+        if (!value.IsNumeric())
         {
-            var weight = i % 2 == 0 ? 3 : 1;
-            weightedSum += (input[i] - '0') * weight;
+            throw new ArgumentOutOfRangeException("value is expected to be numeric: {value:X1}");
         }
 
-        var checkDigit = (10 - weightedSum % 10);
-
-        if(checkDigit % 10 != (input[^1] - '0'))
-        {
-            throw new Exception($"AI Component has invalid check digit. Expected {checkDigit % 10} but got {input[^1]}");
-        }
+        return value.ToString("X1");
     }
 }
