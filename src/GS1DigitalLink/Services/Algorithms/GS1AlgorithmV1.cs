@@ -1,8 +1,9 @@
-﻿using GS1DigitalLink.Utils;
+﻿using GS1DigitalLink.Model;
+using GS1DigitalLink.Utils;
 using System.Text;
 using static GS1DigitalLink.Utils.StoredOptimisationCodes;
 
-namespace GS1DigitalLink.Model.Algorithms;
+namespace GS1DigitalLink.Services.Algorithms;
 
 public sealed class GS1AlgorithmV1 : IDLAlgorithm
 {
@@ -19,16 +20,16 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
         DataAttributes = ApplicationIdentifiers.Except(Qualifiers).ToList();
     }
 
-    public void Parse(BitStream binaryStream, DigitalLinkBuilder result)
+    public IEnumerable<KeyValue> Parse(BitStream binaryStream)
     {
         var ais = new List<string>();
         var current = Convert.ToByte(binaryStream.Current.ToString(), 2);
 
-        if (!IsNumeric(current))
+        if (!current.IsNumeric())
         {
             if (!TryGetOptimizedCode(current, out var optimizedAis))
             {
-                throw new Exception();
+                throw new InvalidOperationException();
             }
 
             ais.AddRange(optimizedAis!.SequenceAIs);
@@ -40,33 +41,23 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
 
             if (length < 0)
             {
-                throw new Exception("No AI matches the value " + code);
+                throw new InvalidOperationException("No AI matches the value " + code);
             }
             for (var i = 2; i < length; i++)
             {
                 binaryStream.Buffer(4);
                 var remain = Convert.ToByte(binaryStream.Current.ToString(), 2);
 
-                if (!IsNumeric(remain))
-                {
-                    throw new Exception("AI code must only contain numeric value");
-                }
-
-                code += remain.ToString("X1");
+                code += remain.ToNumericString();
             }
 
             ais.Add(code);
         }
 
-        ais.ForEach(ai =>
-        {
-            var value = ParseApplicationIdentifier(ai, binaryStream);
-
-            result.Set(value.Item1, value.Item2, IdentifierType.Qualifier);
-        });
+        return ais.Select(ai => ParseApplicationIdentifier(ai, binaryStream));
     }
 
-    public string Format(IEnumerable<Entry> entries, DigitalLinkFormatterOptions options)
+    public string Format(IEnumerable<KeyValue> entries, DigitalLinkFormatterOptions options)
     {
         var buffer = new StringBuilder();
         var compression = new StringBuilder();
@@ -157,19 +148,18 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
         return optimizationCode != OptimizationCode.Default;
     }
 
-    private (ApplicationIdentifier, string) ParseApplicationIdentifier(string code, BitStream inputStream)
+    private KeyValue ParseApplicationIdentifier(string code, BitStream inputStream)
     {
         if (!TryGetQualifier(code, out var ai))
         {
             throw new Exception("AI not found");
         }
      
-        return (ai, ai.ReadFrom(inputStream));
-    }
+        var value = ai.ReadFrom(inputStream);
 
-    private static bool IsNumeric(byte current)
-    {
-        return current >> 4 <= 9 && (current & 0x0F) <= 9;
+        return ai.IsPrimaryKey
+            ? KeyValue.PrimaryKey(code, value)
+            : KeyValue.Qualifier(code, value);
     }
 
     private static void FormatApplicationIdentifier(ApplicationIdentifier ai, string value, StringBuilder buffer)

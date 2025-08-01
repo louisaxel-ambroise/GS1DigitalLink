@@ -9,7 +9,7 @@ var applicationIdentifiers = JsonSerializer.Deserialize<GS1Identifiers>(File.Ope
 var algorithm = new GS1AlgorithmV1(optimizationCodes.OptimizationCodes, applicationIdentifiers.ApplicationIdentifiers);
 
 var digitalLinkParser = new DigitalLinkParser(algorithm);
-var entries = new Entry[] { new("01", "07320582208001"), new("22", "2A"), new("10", "1234567890") };
+var entries = new KeyValue[] { new("01", "07320582208001"), new("22", "2A"), new("10", "1234567890") };
 
 var uncompressed = string.Join('/', entries.Select(e => string.Join('/', e.Key, e.Value)));
 var compressed = algorithm.Format(entries, new() { CompressionType = DLCompressionType.Full });
@@ -24,7 +24,7 @@ var pparsed = "http://id.fastnt.eu/test/ai/with/path/01/07320582208001/22/2A/10/
 var reparsed = digitalLinkParser.Parse(pparsed);
 
 Console.WriteLine(input);
-Console.WriteLine(parsed.Result);
-Console.WriteLine(reparsed.Result);
+Console.WriteLine(parsed);
+Console.WriteLine(reparsed);
 
 Console.ReadLine();
