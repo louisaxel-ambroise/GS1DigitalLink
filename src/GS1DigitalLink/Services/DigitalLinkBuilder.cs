@@ -5,8 +5,12 @@ namespace GS1DigitalLink.Services;
 
 public class DigitalLinkBuilder
 {
+    public static DigitalLinkBuilder Create() => new();
+
     private readonly List<KeyValue> _values = [];
     private readonly List<string> _errors = [];
+
+    private DigitalLinkBuilder() { }
 
     public DigitalLinkBuilder Add(KeyValue keyValue)
     {
@@ -17,9 +21,7 @@ public class DigitalLinkBuilder
 
     public DigitalLinkBuilder AddRange(IEnumerable<KeyValue> keyValues)
     {
-        _values.AddRange(keyValues);
-
-        return this;
+        return keyValues.Aggregate(this, (builder, keyValue) => builder.Add(keyValue));
     }
 
     public bool Validate(GS1Identifiers identifiers, out DigitalLink? result)

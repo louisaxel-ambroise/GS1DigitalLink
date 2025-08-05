@@ -29,7 +29,7 @@ public class BitStream(string compressedString)
     {
         if (_position % 6 == 0)
         {
-            _buffer = Characters.GetBinary(compressedString.ElementAt(_position / 6));
+            _buffer = Alphabets.GetBinary(compressedString.ElementAt(_position / 6));
         }
 
         return _buffer[_position++ % 6];

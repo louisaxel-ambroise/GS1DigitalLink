@@ -30,7 +30,7 @@ apiEndpoints.MapPost("/compress", () =>
 {
     var segments = new KeyValue[] { PrimaryKey("01", "07320582208002"), Qualifier("22", "2A"), Qualifier("10", "1234567890"), Qualifier("21", "2A") };
 
-    return Results.Redirect(algorithm.Format(segments, new() { CompressionType = DLCompressionType.Full }), false, false);
+    return Results.Ok(new { Compressed = algorithm.Format(segments, new() { CompressionType = DLCompressionType.Full }) });
 });
 
 app.MapHealthChecks("/");
@@ -38,7 +38,6 @@ app.MapGet("/{**_}", (HttpRequest request) =>
 {
     var dlUrl = request.GetEncodedUrl();
     var builder = digitalLinkParser.Parse(dlUrl);
-
 
     if (builder.Validate(applicationIdentifiers, out var digitalLink))
     {

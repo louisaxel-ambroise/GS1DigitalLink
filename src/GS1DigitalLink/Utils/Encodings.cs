@@ -19,7 +19,7 @@ public record Encodings(Func<int, BitStream, string> Read)
         var chars = Enumerable.Range(1, length).Select(_ =>
         {
             stream.Buffer(4);
-            return Characters.GetAlpha(stream.Current);
+            return Alphabets.GetAlpha(stream.Current);
         });
 
         return new string([.. chars.Select(char.ToLower)]);
@@ -30,7 +30,7 @@ public record Encodings(Func<int, BitStream, string> Read)
         var chars = Enumerable.Range(1, length).Select(_ =>
         {
             stream.Buffer(4);
-            return Characters.GetAlpha(stream.Current);
+            return Alphabets.GetAlpha(stream.Current);
         });
 
         return new string([.. chars.Select(char.ToUpper)]);
@@ -41,7 +41,7 @@ public record Encodings(Func<int, BitStream, string> Read)
         var chars = Enumerable.Range(1, length).Select(_ =>
         {
             stream.Buffer(6);
-            return Characters.GetChar(stream.Current);
+            return Alphabets.GetChar(stream.Current);
         });
 
         return new string([.. chars]);

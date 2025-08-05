@@ -2,11 +2,12 @@
 
 namespace GS1DigitalLink.Utils;
 
-public static class Characters
+public static class Alphabets
 {
     public static char GetChar(ReadOnlySpan<char> input) => Base64UrlSafe.ElementAt(Convert.ToInt32(input.ToString(), 2));
     public static char GetAlpha(ReadOnlySpan<char> input) => Alpha.ElementAt(Convert.ToInt32(input.ToString(), 2));
     public static string GetBinary(char input) => Convert.ToString(Base64UrlSafe.IndexOf(input, StringComparison.Ordinal), 2).PadLeft(6, '0');
+    public static string GetAlphaBinary(string input) => string.Concat(input.Select(GetAlphaBinary));
     public static string GetAlphaBinary(char input) => Convert.ToString(Alpha.IndexOf(input, StringComparison.OrdinalIgnoreCase), 2).PadLeft(4, '0');
 
     private static readonly string Alpha = "0123456789ABCDEF";
@@ -25,7 +26,7 @@ public static class Characters
 
                 if (buffer.Length == 6)
                 {
-                    parsed.Append(Characters.GetChar(buffer.ToString()));
+                    parsed.Append(GetChar(buffer.ToString()));
 
                     buffer.Clear();
                 }

@@ -14,9 +14,7 @@ public sealed class DigitalLinkParser(IDLAlgorithm algorithm)
 
     public DigitalLinkBuilder Parse(Uri input)
     {
-        var builder = new DigitalLinkBuilder();
-
-        return builder
+        return DigitalLinkBuilder.Create()
             .AddRange(ProcessUriPath(input.LocalPath.Trim(PathDelimiter), algorithm))
             .AddRange(ProcessQueryString(input.Query, algorithm));
     }
@@ -73,12 +71,13 @@ public sealed class DigitalLinkParser(IDLAlgorithm algorithm)
 
             if (binaryStream.Current[..4] == "1101")
             {
-                //algorithm = options.FindAlgorithm(binaryStream.Current[4..]);
+                var version = binaryStream.Current[4..].ToString();
+                algorithm.UseAlgorithm(version, AlgorithmType.GS1);
             }
             else if (binaryStream.Current[..4] == "1110")
             {
-                //algorithm = options.FindAlgorithm(binaryStream.Current[4..]) ?? 
-                throw new InvalidOperationException($"Unknown algorithm version {binaryStream.Current[4..]}");
+                var version = binaryStream.Current[4..].ToString();
+                algorithm.UseAlgorithm(version, AlgorithmType.Proprietary);
             }
             else
             {

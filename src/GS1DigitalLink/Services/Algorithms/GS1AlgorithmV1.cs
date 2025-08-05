@@ -76,10 +76,8 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
         {
             if (TryGetBestOptimization(entries.Select(x => x.Key), out var optimization))
             {
-                foreach (var c in optimization.Code)
-                {
-                    compression.Append(Characters.GetAlphaBinary(c));
-                }
+                compression.Append(Alphabets.GetAlphaBinary(optimization.Code));
+
                 foreach (var element in optimization.SequenceAIs)
                 {
                     if (TryGetQualifier(element, out var applicationIdentifier))
@@ -101,7 +99,7 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
                 throw new InvalidOperationException($"Unknown AI: {entry.Key}");
             }
 
-            compression = entry.Key.Aggregate(compression, (b, c) => b.Append(Characters.GetAlphaBinary(c)));
+            compression = entry.Key.Aggregate(compression, (b, c) => b.Append(Alphabets.GetAlphaBinary(c)));
 
             FormatApplicationIdentifier(applicationIdentifier, entry.Value, compression);
         }
@@ -219,35 +217,31 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
         else if (componentValue.IsLowerCaseHex())
         {
             buffer.Append("001").Append(prefix);
-
-            foreach (var c in componentValue)
-            {
-                buffer.Append(Characters.GetAlphaBinary(c));
-            }
+            buffer.Append(Alphabets.GetAlphaBinary(componentValue));
         }
         else if (componentValue.IsUpperCaseHex())
         {
             buffer.Append("010").Append(prefix);
-
-            foreach (var c in componentValue)
-            {
-                buffer.Append(Characters.GetAlphaBinary(c));
-            }
+            buffer.Append(Alphabets.GetAlphaBinary(componentValue));
         }
         else if (componentValue.IsUriSafeBase64())
         {
             buffer.Append("011").Append(prefix);
-
-            foreach (var c in componentValue)
-            {
-                buffer.Append(Characters.GetBinary(c));
-            }
+            buffer.Append(Alphabets.GetAlphaBinary(componentValue));
         }
         else
         {
             buffer.Append("100").Append(prefix);
             buffer.Append(string.Concat(Encoding.ASCII.GetBytes(componentValue).Select(x => Convert.ToString(x, 2).PadLeft(7, '0'))));
         }
+    }
+
+    // TODO: get correct algorithm from (version, type) tuple.
+    public void UseAlgorithm(string version, AlgorithmType type)
+    {
+        if ((version, type) == ("0001", AlgorithmType.GS1)) return;
+
+        throw new Exception("Unknown algorithm version");
     }
 
     private Dictionary<string, int> CodeLength => ApplicationIdentifiers.GroupBy(x => x.Code[..2]).ToDictionary(x => x.Key, x => x.First().Code.Length);
