@@ -1,0 +1,139 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<title>Digital Link Resolver</title>
+        <link rel="stylesheet" href="style.css" media="all" />
+	</head>
+	<body>
+		<main>
+			<section class="info">
+				<h2>Digital_Link_Resolver</h2>
+				<p>The <em>FasT&amp;T digital link resolver</em> allows you to manage the GS1 Digital Link configuration and redirection for your company products.</p>
+				<p>Use the form on th eright to sign in or sign up and get started in minutes!</p>
+			</section>
+			<section class="form">
+				<h2>Identification</h2>
+				<form method="post" action="#">
+					<fieldset>
+						<legend>Already have an account</legend>
+						<label for="username">username</label>
+						<input type="text" id="username" placeholder="email address" />
+						<label for="password">password</label>
+						<input type="password" id="password" placeholder="password" />
+					</fieldset>
+					<fieldset id="buttons">
+						<input type="button" class="cancel" value="Cancel"/>
+						<input type="button" class="submit" value="Submit"/>
+					</fieldset>
+				</form>
+                <p>Don't have an account? <a href="signup.html">Signup now</a></p>
+			</section>
+		</main>
+		<footer>
+			<p class="copyright">Copyright &copy; FasT&amp;T 2025</p>
+		</footer>
+	</body>
+	<script type="text/javascript">
+		let current = null;
+		
+		const valueField = document.getElementById('link_value');
+		const identifiers = [
+			{
+				"identifier": "/01/1234567890",
+				"links": [
+					{
+						"type": "pip",
+						"translations":[
+							{
+								"lang": "fr",
+								"value": "https://fastnt.fr/produit.html"
+							},
+							{
+								"lang": "en",
+								"value": "https://fastnt.co.uk/product.html"
+							},
+						]
+					},
+					{
+						"type": "info",
+						"translations":[
+							{
+								"lang": "es",
+								"value": "https://fastnt.es/producto_info.html{?01}"
+							},
+						]
+					}
+				]
+			}
+		];
+		
+		function initializeDatalist(){
+			let datalist = document.getElementById('identifiers');
+			
+			datalist.innerHTML = '';
+			
+			identifiers.forEach(elt => {
+				let option = new Option(elt.identifier, elt.identifier);
+				datalist.appendChild(option);
+			});
+		}
+		
+		function selectIdentifier(){
+			const input = document.getElementById("key").value;
+			current = identifiers.find(i => i.identifier === input) || null;
+			
+			if(!current){
+				current = { identifier: input, links: [] };
+				identifiers.push(current);
+				initializeDatalist();
+			}
+			
+			updateTranslation();
+		}
+		
+		function updateTranslation(){
+			if(current === null) return;
+			
+			let currentValue = "";
+			let linkType = document.getElementById('link_type').value;
+			let selectedLanguage = document.getElementById('lang').value;
+			
+			const link = current.links.find(l => l.type === linkType);
+			const translation = link?.translations.find(t => t.lang === selectedLanguage);
+			
+			valueField.value = translation?.value || "";
+		}
+		
+		function setTranslation() {
+		  if (!current) return;
+
+		  const linkType = document.getElementById("link_type").value;
+		  const selectedLanguage = document.getElementById("lang").value;
+		  const linkValue = document.getElementById("link_value").value;
+
+		  let link = current.links.find(l => l.type === linkType) || null;
+
+		  if (!link) {
+			link = { type: linkType, translations: [] };
+			current.links.push(link);
+		  }
+
+		  let translation = link.translations.find(t => t.lang === selectedLanguage);
+
+		  if (translation) {
+			translation.value = linkValue;
+		  } else {
+			link.translations.push({ lang: selectedLanguage, value: linkValue });
+		  }
+		}
+		
+		document.addEventListener("DOMContentLoaded", () => {
+			initializeDatalist();
+			document.getElementById('key').addEventListener('blur', selectIdentifier);
+			document.getElementById('link_type').addEventListener('change', updateTranslation);
+			document.getElementById('lang').addEventListener('change', updateTranslation);
+			document.getElementById('link_value').addEventListener('blur', setTranslation);
+		});
+	</script>
+</html>

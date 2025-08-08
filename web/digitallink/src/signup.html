@@ -1,0 +1,47 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<title>Digital Link Resolver</title>
+        <link rel="stylesheet" href="style.css" media="all" />
+	</head>
+	<body>
+		<main>
+			<section class="info">
+				<h2>Digital_Link_Resolver</h2>
+				<p>Use the form on the right to create a new account on the <em>FasT&amp;T DigitalLink resolver</em>.</p>
+			</section>
+			<section class="form">
+				<h2>register</h2>
+				<form method="post" action="#">
+					<fieldset>
+						<legend>company_information</legend>
+						<label for="gcp">GS1_company_prefix</label>
+						<input type="text" id="gcp" placeholder="0123456" />
+
+						<label for="company_name">company_name</label>
+						<input type="text" id="company_name" placeholder="company name" />
+					</fieldset>
+					<fieldset id="links">
+						<legend>account_information</legend>
+						<label for="email">email_address</label>
+						<input type="text" id="email" placeholder="email address" />
+
+						<label for="password">password</label>
+						<input type="password" id="password" placeholder="password" />
+
+						<label for="password_confirmation">confirm_password</label>
+						<input type="password" id="password_confirmation" placeholder="password" />
+					</fieldset>
+					<fieldset id="buttons">
+						<input type="button" class="cancel" value="Cancel"/>
+						<input type="button" class="submit" value="Submit"/>
+					</fieldset>
+				</form>
+			</section>
+		</main>
+		<footer>
+			<p class="copyright">Copyright &copy; FasT&amp;T 2025</p>
+		</footer>
+	</body>
+</html>

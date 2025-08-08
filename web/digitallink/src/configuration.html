@@ -1,0 +1,157 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<meta charset="utf-8"/>
+		<title>Digital Link Resolver</title>
+        <link rel="stylesheet" href="style.css" media="all" />
+	</head>
+	<body>
+		<main>
+			<section class="info">
+				<h2>Digital_Link_Resolver</h2>
+				<p>You can configure new products in the <em>FasT&amp;T digital link resolver</em> on this page.</p>
+				<p>Simply enter the details of the product in the form on the right and the link will be directly available in the resolver.</p>
+			</section>
+			<section class="form">
+				<h2>New_Identifier</h2>
+				<form method="post" action="#">
+					<fieldset>
+						<legend>identifier</legend>
+						<label for="key">Primary_key</label>
+						<input type="text" id="key" placeholder="/01/123456789012/21/2A" list="identifiers" />
+						<datalist id="identifiers">
+						</datalist>
+					</fieldset>
+					<fieldset id="links">
+						<legend>links</legend>
+						<label for="link_type">link_type</label>
+						<select id="link_type">
+							<option value="pip" selected>product_information_page</option>
+							<option value="info">additional_info</option>
+						</select>
+						<label for="link_value">link_value</label>
+						<div class="language_input">
+							<select id="lang">
+								<option value="fr" selected>🇫🇷</option>
+								<option value="en">🇬🇧</option>
+								<option value="nl">🇳🇱</option>
+								<option value="de">🇩🇪</option>
+								<option value="es">ES</option>
+							</select>
+							<input type="url" id="link_value" placeholder="Enter link for PIP"/>
+						</div>
+					</fieldset>
+					<fieldset id="buttons">
+						<input type="button" class="cancel" value="Cancel"/>
+						<input type="button" class="submit" value="Submit"/>
+					</fieldset>
+				</form>
+			</section>
+		</main>
+		<footer>
+			<p class="copyright">Copyright &copy; FasT&amp;T 2025</p>
+		</footer>
+	</body>
+	<script type="text/javascript">
+		let current = null;
+		
+		const valueField = document.getElementById('link_value');
+		const identifiers = [
+			{
+				"identifier": "/01/1234567890",
+				"links": [
+					{
+						"type": "pip",
+						"translations":[
+							{
+								"lang": "fr",
+								"value": "https://fastnt.fr/produit.html"
+							},
+							{
+								"lang": "en",
+								"value": "https://fastnt.co.uk/product.html"
+							},
+						]
+					},
+					{
+						"type": "info",
+						"translations":[
+							{
+								"lang": "es",
+								"value": "https://fastnt.es/producto_info.html{?01}"
+							},
+						]
+					}
+				]
+			}
+		];
+		
+		function initializeDatalist(){
+			let datalist = document.getElementById('identifiers');
+			
+			datalist.innerHTML = '';
+			
+			identifiers.forEach(elt => {
+				let option = new Option(elt.identifier, elt.identifier);
+				datalist.appendChild(option);
+			});
+		}
+		
+		function selectIdentifier(){
+			const input = document.getElementById("key").value;
+			current = identifiers.find(i => i.identifier === input) || null;
+			
+			if(!current){
+				current = { identifier: input, links: [] };
+				identifiers.push(current);
+				initializeDatalist();
+			}
+			
+			updateTranslation();
+		}
+		
+		function updateTranslation(){
+			if(current === null) return;
+			
+			let currentValue = "";
+			let linkType = document.getElementById('link_type').value;
+			let selectedLanguage = document.getElementById('lang').value;
+			
+			const link = current.links.find(l => l.type === linkType);
+			const translation = link?.translations.find(t => t.lang === selectedLanguage);
+			
+			valueField.value = translation?.value || "";
+		}
+		
+		function setTranslation() {
+		  if (!current) return;
+
+		  const linkType = document.getElementById("link_type").value;
+		  const selectedLanguage = document.getElementById("lang").value;
+		  const linkValue = document.getElementById("link_value").value;
+
+		  let link = current.links.find(l => l.type === linkType) || null;
+
+		  if (!link) {
+			link = { type: linkType, translations: [] };
+			current.links.push(link);
+		  }
+
+		  let translation = link.translations.find(t => t.lang === selectedLanguage);
+
+		  if (translation) {
+			translation.value = linkValue;
+		  } else {
+			link.translations.push({ lang: selectedLanguage, value: linkValue });
+		  }
+		}
+		
+		document.addEventListener("DOMContentLoaded", () => {
+			initializeDatalist();
+			document.getElementById('key').addEventListener('blur', selectIdentifier);
+			document.getElementById('link_type').addEventListener('change', updateTranslation);
+			document.getElementById('lang').addEventListener('change', updateTranslation);
+			document.getElementById('link_value').addEventListener('blur', setTranslation);
+		});
+	</script>
+</html>
