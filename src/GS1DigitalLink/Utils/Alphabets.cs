@@ -6,8 +6,9 @@ public static class Alphabets
 {
     public static char GetChar(ReadOnlySpan<char> input) => Base64UrlSafe.ElementAt(Convert.ToInt32(input.ToString(), 2));
     public static char GetAlpha(ReadOnlySpan<char> input) => Alpha.ElementAt(Convert.ToInt32(input.ToString(), 2));
-    public static string GetBinary(char input) => Convert.ToString(Base64UrlSafe.IndexOf(input, StringComparison.Ordinal), 2).PadLeft(6, '0');
     public static string GetAlphaBinary(string input) => string.Concat(input.Select(GetAlphaBinary));
+    public static string GetBase64Binary(string input) => string.Concat(input.Select(GetBinary));
+    public static string GetBinary(char input) => Convert.ToString(Base64UrlSafe.IndexOf(input), 2).PadLeft(6, '0');
     public static string GetAlphaBinary(char input) => Convert.ToString(Alpha.IndexOf(input, StringComparison.OrdinalIgnoreCase), 2).PadLeft(4, '0');
 
     private static readonly string Alpha = "0123456789ABCDEF";
@@ -16,19 +17,19 @@ public static class Alphabets
     public static StringBuilder GetChars(this StringBuilder builder)
     {
         var parsed = new StringBuilder(builder.Length / 6);
-        var buffer = new StringBuilder(6);
+        var buffer = new char[6];
+        var length = 0;
 
         foreach (var chunk in builder.GetChunks())
         {
             foreach (var c in chunk.Span)
             {
-                buffer.Append(c);
+                buffer[length++] = c;
 
-                if (buffer.Length == 6)
+                if (length == 6)
                 {
-                    parsed.Append(GetChar(buffer.ToString()));
-
-                    buffer.Clear();
+                    parsed.Append(GetChar(buffer));
+                    length = 0;
                 }
             }
         }

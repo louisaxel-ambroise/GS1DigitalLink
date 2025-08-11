@@ -14,7 +14,7 @@ public class BitStream(string compressedString)
 
     public void Buffer(int length)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(Remaining, length);
+        ArgumentOutOfRangeException.ThrowIfLessThan(Remaining, length);
     
         var output = new StringBuilder(length);
 

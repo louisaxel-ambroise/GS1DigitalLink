@@ -1,7 +1,5 @@
-﻿using System.Text;
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 
 namespace GS1DigitalLink.Utils;
 
@@ -15,7 +13,8 @@ public record GS1Identifiers
 
 public record ApplicationIdentifier
 {
-    public static ApplicationIdentifier None = new();
+    private static readonly ApplicationIdentifier _none = new();
+    public static ApplicationIdentifier None => _none;
 
     [JsonPropertyName("applicationIdentifier")]
     public string Code { get; init; } = string.Empty;
@@ -54,62 +53,6 @@ public record ApplicationIdentifier
 
         [JsonPropertyName("checkDigit")]
         public bool CheckDigit { get; init; }
-
-        public string ReadFrom(BitStream inputStream)
-        {
-            var encoding = GetEncoding(Charset, inputStream);
-            var length = GetBitsLength(inputStream);
-
-            return encoding.Read(length, inputStream);
-        }
-
-        private int GetBitsLength(BitStream stream)
-        {
-            if (FixedLength)
-            {
-                return Length;
-            }
-            else
-            {
-                var lengthBits = (int)Math.Ceiling(Math.Log(Length) / Math.Log(2));
-                stream.Buffer(lengthBits);
-
-                return Convert.ToInt32(stream.Current.ToString(), 2);
-            }
-        }
-
-        private static Encodings GetEncoding(string charset, BitStream stream)
-        {
-            if (charset == "N")
-            {
-                return Encodings.Numeric;
-            }
-            else
-            {
-                stream.Buffer(3);
-
-                var encodingIndex = Convert.ToInt32(stream.Current.ToString(), 2);
-
-                return Encodings.Values.ElementAt(encodingIndex);
-            }
-        }
-    }
-
-    internal string ReadFrom(BitStream inputStream)
-    {
-        var buffer = new StringBuilder();
-
-        foreach (var component in Components)
-        {
-            buffer.Append(component.ReadFrom(inputStream));
-        }
-
-        return buffer.ToString();
-    }
-
-    public bool Validate(string value)
-    {
-        return Regex.IsMatch(value, $"^{Pattern}$");
     }
 }
 
@@ -188,14 +131,14 @@ public class KeyQualifierConverter : JsonConverter<KeyQualifiers>
             }
             else if (reader.TokenType == JsonTokenType.StartArray)
             {
-                groups = new List<string>();
+                groups = [];
                 depth++;
             }
             else if (reader.TokenType == JsonTokenType.EndArray)
             {
                 depth--;
 
-                qualifierLists.Add(groups.ToArray());
+                qualifierLists.Add([.. groups]);
 
                 if (depth == 0) break;
             }
@@ -242,12 +185,12 @@ public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : A
                     if (reader.TokenType == JsonTokenType.PropertyName && reader.GetString() == "start")
                     {
                         reader.Read();
-                        start = int.Parse(reader.GetString());
+                        start = int.Parse(reader.GetString() ?? "");
                     }
                     else if (reader.TokenType == JsonTokenType.PropertyName && reader.GetString() == "end")
                     {
                         reader.Read();
-                        end = int.Parse(reader.GetString());
+                        end = int.Parse(reader.GetString() ?? "");
                     }
                 }
 
@@ -265,14 +208,14 @@ public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : A
             {
                 depth--;
 
-                if (group.RequiredAIs.Any()) { 
+                if (group.RequiredAIs.Count > 0) { 
                 groups.Add(group);}
 
                 if (depth == 0) break;
             }
         }
 
-        return new AIRequirements { Groups = groups.ToArray() };
+        return new AIRequirements { Groups = [.. groups] };
     }
 
     public override void Write(Utf8JsonWriter writer, AIRequirements value, JsonSerializerOptions options)

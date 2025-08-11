@@ -16,8 +16,8 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
     {
         OptimizationCodes = optimizationCodes;
         ApplicationIdentifiers = applicationIdentifiers;
-        Qualifiers = ApplicationIdentifiers.Where(ai => ai.IsPrimaryKey || ApplicationIdentifiers.SelectMany(i => i.Qualifiers?.AllowedQualifiers?.SelectMany(a => a) ?? []).Contains(ai.Code)).ToList();
-        DataAttributes = ApplicationIdentifiers.Except(Qualifiers).ToList();
+        Qualifiers = [.. ApplicationIdentifiers.Where(ai => ai.IsPrimaryKey || ApplicationIdentifiers.SelectMany(i => i.Qualifiers?.AllowedQualifiers?.SelectMany(a => a) ?? []).Contains(ai.Code))];
+        DataAttributes = [.. ApplicationIdentifiers.Except(Qualifiers)];
     }
 
     public IEnumerable<KeyValue> Parse(BitStream binaryStream)
@@ -64,10 +64,8 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
 
         if (options.CompressionType is DLCompressionType.Partial)
         {
-            var key = entries.FirstOrDefault(x => TryGetQualifier(x.Key, out var ai) && ai.IsPrimaryKey);
-
-            if (key is null) throw new Exception("No AI key found in entries");
-
+            var key = entries.FirstOrDefault(x => TryGet(x.Key, Qualifiers, out var identifier) && identifier.IsPrimaryKey) 
+                   ?? throw new Exception("No AI key found in entries");
             buffer.Append('/').Append(key.Key).Append('/').Append(key.Value).Append('/');
 
             entries = entries.Except([key]);
@@ -80,7 +78,7 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
 
                 foreach (var element in optimization.SequenceAIs)
                 {
-                    if (TryGetQualifier(element, out var applicationIdentifier))
+                    if (TryGet(element, ApplicationIdentifiers, out var applicationIdentifier))
                     {
                         var entry = entries.Single(a => a.Key == element);
 
@@ -94,7 +92,7 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
 
         foreach (var entry in entries)
         {
-            if (!TryGetQualifier(entry.Key, out var applicationIdentifier))
+            if (!TryGet(entry.Key, ApplicationIdentifiers, out var applicationIdentifier))
             {
                 throw new InvalidOperationException($"Unknown AI: {entry.Key}");
             }
@@ -104,21 +102,18 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
             FormatApplicationIdentifier(applicationIdentifier, entry.Value, compression);
         }
 
-        compression.Append(new string('0', 6 - buffer.Length % 6));
+        compression.Append(new string('0', (6 - compression.Length % 6)%6));
         buffer.Append(compression.GetChars());
 
         return buffer.ToString();
     }
 
-    public bool TryGetQualifier(string? code, out ApplicationIdentifier ai)
-    {
-        ai = Qualifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
+    public bool TryGetQualifier(string? code, out ApplicationIdentifier ai) => TryGet(code, Qualifiers, out ai);
+    public bool TryGetDataAttribute(string? code, out ApplicationIdentifier ai) => TryGet(code, DataAttributes, out ai);
 
-        return ai != ApplicationIdentifier.None;
-    }
-    public bool TryGetDataAttribute(string? code, out ApplicationIdentifier ai)
+    public static bool TryGet(string? code, IEnumerable<ApplicationIdentifier> identifiers, out ApplicationIdentifier ai)
     {
-        ai = DataAttributes.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
+        ai = identifiers.SingleOrDefault(x => x.Code == code, ApplicationIdentifier.None);
 
         return ai != ApplicationIdentifier.None;
     }
@@ -148,91 +143,37 @@ public sealed class GS1AlgorithmV1 : IDLAlgorithm
 
     private KeyValue ParseApplicationIdentifier(string code, BitStream inputStream)
     {
-        if (!TryGetQualifier(code, out var ai))
+        if (TryGetQualifier(code, out var qualifier))
         {
-            throw new Exception("AI not found");
-        }
-     
-        var value = ai.ReadFrom(inputStream);
+            var value = qualifier.ReadFrom(inputStream);
 
-        return ai.IsPrimaryKey
-            ? KeyValue.PrimaryKey(code, value)
-            : KeyValue.Qualifier(code, value);
+            return qualifier.IsPrimaryKey
+                ? KeyValue.PrimaryKey(code, value)
+                : KeyValue.Qualifier(code, value);
+        }
+        if (TryGetDataAttribute(code, out var attribute))
+        {
+            var value = attribute.ReadFrom(inputStream);
+
+            return KeyValue.Attribute(code, value);
+        }
+
+        throw new Exception("AI not found");
     }
 
     private static void FormatApplicationIdentifier(ApplicationIdentifier ai, string value, StringBuilder buffer)
     {
-        foreach (var component in ai.Components)
+        var remaining = ai.Components.Aggregate(value, (remaining, component) =>
         {
-            if (component.Charset == "N")
-            {
-                if (component.FixedLength)
-                {
-                    var componentValue = value[..component.Length];
-                    var c = Convert.ToString(Convert.ToInt64(componentValue, 10), 2);
-                    var expectedLength = (int)Math.Ceiling(component.Length * Math.Log(10) / Math.Log(2) + 0.01);
+            buffer.Append(ComponentFormatter.Format(component, value));
 
-                    buffer.Append(c.PadLeft(expectedLength, '0'));
-                }
-                else
-                {
-                    var c = Convert.ToString(Convert.ToInt32(value, 10), 2);
-                    var lengthSize = (int)Math.Ceiling(Math.Log(component.Length) / Math.Log(2) + 0.01);
-                    var l2 = Convert.ToString(value.Length, 2).PadLeft(lengthSize);
-                    var nl = (int)Math.Ceiling(lengthSize * Math.Log(10) / Math.Log(2) + 0.01);
+            var startIndex = component.FixedLength ? component.Length : Math.Min(component.Length, value.Length);
+            return value[startIndex..];
+        });
 
-                    buffer.Append(l2).Append(c.PadLeft(nl, '0'));
-                }
-            }
-            else
-            {
-                if (component.FixedLength)
-                {
-                    var componentValue = value[..component.Length];
-
-                    FormatValue(componentValue, buffer);
-                }
-                else
-                {
-                    var nli = (int)Math.Ceiling(Math.Log(component.Length) / Math.Log(2) + 0.01);
-                    var li = Convert.ToString(value.Length, 2).PadLeft(nli, '0');
-
-                    FormatValue(value, buffer, li);
-                }
-            }
-
-            value = value[(component.FixedLength ? component.Length : Math.Min(component.Length, value.Length))..];
-        }
-    }
-
-    private static void FormatValue(string componentValue, StringBuilder buffer, string? prefix = null)
-    {
-        if (componentValue.IsNumeric())
+        if(remaining.Length > 0)
         {
-            var nv = (int)Math.Ceiling(componentValue.Length * Math.Log(10) / Math.Log(2) + 0.01);
-
-            buffer.Append("000").Append(prefix);
-            buffer.Append(Convert.ToString(Convert.ToInt64(componentValue, 10), 2).PadLeft(nv, '0'));
-        }
-        else if (componentValue.IsLowerCaseHex())
-        {
-            buffer.Append("001").Append(prefix);
-            buffer.Append(Alphabets.GetAlphaBinary(componentValue));
-        }
-        else if (componentValue.IsUpperCaseHex())
-        {
-            buffer.Append("010").Append(prefix);
-            buffer.Append(Alphabets.GetAlphaBinary(componentValue));
-        }
-        else if (componentValue.IsUriSafeBase64())
-        {
-            buffer.Append("011").Append(prefix);
-            buffer.Append(Alphabets.GetAlphaBinary(componentValue));
-        }
-        else
-        {
-            buffer.Append("100").Append(prefix);
-            buffer.Append(string.Concat(Encoding.ASCII.GetBytes(componentValue).Select(x => Convert.ToString(x, 2).PadLeft(7, '0'))));
+            throw new Exception("Value does not match the list of components");
         }
     }
 
