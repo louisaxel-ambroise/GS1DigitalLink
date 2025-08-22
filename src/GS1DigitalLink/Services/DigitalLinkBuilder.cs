@@ -34,9 +34,9 @@ public class DigitalLinkBuilder
             result = new DigitalLink
             {
                 PrimaryKey = _values.Single(v => v.Type == KeyValueType.PrimaryKey),
-                Qualifiers = _values.Where(v => v.Type == KeyValueType.Qualifier).ToArray(),
-                Attributes = _values.Where(v => v.Type == KeyValueType.Attribute).ToArray(),
-                QueryElements = _values.Where(v => v.Type == KeyValueType.QueryElement).ToArray(),
+                Qualifiers = [.. _values.Where(v => v.Type == KeyValueType.Qualifier)],
+                Attributes = [.. _values.Where(v => v.Type == KeyValueType.Attribute)],
+                QueryElements = [.. _values.Where(v => v.Type == KeyValueType.QueryElement)],
             };
         }
 
@@ -61,25 +61,35 @@ public class DigitalLinkBuilder
         {
             var ai = identifiers.ApplicationIdentifiers.Single(i => i.Code == identifier.Key);
 
-            Validate(ai, allKeys);
+            Validate(ai, allKeys.Except(ai.Code));
 
-            if(identifier.Type is KeyValueType.PrimaryKey && ai.Qualifiers is not null && ai.Qualifiers.AllowedQualifiers.Any())
+            if(identifier.Type is KeyValueType.PrimaryKey)
             {
-                if (!ValidateQualifier(ai.Qualifiers.AllowedQualifiers, _values.Where(v => v.Type == KeyValueType.Qualifier).Select(x => x.Key)))
+                foreach(var component in ai.Components.Where(c => c.CheckDigit))
                 {
-                    _errors.Add($"Invalid qualifier");
+                    CheckDigitHelper.EnsureIsValid(identifier.Value);
+                }
+
+                if (ai.Qualifiers.AllowedQualifiers.Count > 0)
+                {
+                    var qualifierKeys = _values.Where(v => v.Type == KeyValueType.Qualifier).Select(x => x.Key);
+
+                    if (!ValidateQualifier(ai.Qualifiers.AllowedQualifiers, qualifierKeys))
+                    {
+                        _errors.Add($"Invalid qualifier");
+                    }
                 }
             }
         }
     }
 
-    private void Validate(ApplicationIdentifier ai, IEnumerable<string> allKeys)
+    private void Validate(ApplicationIdentifier ai, IEnumerable<string> otherKeys)
     {
-        if (!ai.Requirements.IsEmpty && !ai.Requirements.IsFulfilledBy(allKeys.Except(ai.Code)))
+        if (!ai.Requirements.IsEmpty && !ai.Requirements.IsFulfilledBy(otherKeys))
         {
             _errors.Add($"AI '{ai.Code}' required associations is not fulfilled");
         }
-        else if (!ai.Exclusions.IsEmpty && ai.Exclusions.IsFulfilledBy(allKeys.Except(ai.Code)))
+        else if (!ai.Exclusions.IsEmpty && ai.Exclusions.IsFulfilledBy(otherKeys))
         {
             _errors.Add($"AI '{ai.Code}' contains invalid AI pairing");
         }

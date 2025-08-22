@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace GS1DigitalLink.Utils;
@@ -38,12 +39,13 @@ public record ApplicationIdentifier
 
     [JsonPropertyName("gs1DigitalLinkQualifiers")]
     [JsonConverter(typeof(KeyQualifierConverter))]
-    public KeyQualifiers? Qualifiers { get; set; }
+    public KeyQualifiers Qualifiers { get; set; } = new();
 
     public class AIComponent
     {
         [JsonPropertyName("type")]
-        public required string Charset { get; init; }
+        [JsonConverter(typeof(CharsetConverter))]
+        public required Charset Charset { get; init; }
 
         [JsonPropertyName("length")]
         public required int Length { get; init; }
@@ -54,6 +56,13 @@ public record ApplicationIdentifier
         [JsonPropertyName("checkDigit")]
         public bool CheckDigit { get; init; }
     }
+}
+
+public enum Charset
+{
+    Unknown,
+    Numeric,
+    Alpha
 }
 
 public class KeyQualifiers
@@ -221,5 +230,23 @@ public class RequirementConverter<T> : JsonConverter<AIRequirements> where T : A
     public override void Write(Utf8JsonWriter writer, AIRequirements value, JsonSerializerOptions options)
     {
         throw new NotImplementedException();
+    }
+}
+
+public class CharsetConverter : JsonConverter<Charset>
+{
+    public override Charset Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.GetString() switch
+        {
+            "N" => Charset.Numeric,
+            "X" => Charset.Alpha,
+            _ => Charset.Unknown
+        };
+    }
+
+    public override void Write(Utf8JsonWriter writer, Charset value, JsonSerializerOptions options)
+    {
+        throw new NotImplementedException("Cannot write Charset");
     }
 }

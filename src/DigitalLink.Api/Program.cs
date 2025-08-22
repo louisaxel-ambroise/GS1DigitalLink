@@ -3,7 +3,6 @@ using GS1DigitalLink.Processors;
 using GS1DigitalLink.Services.Algorithms;
 using GS1DigitalLink.Utils;
 using Microsoft.AspNetCore.Http.Extensions;
-using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 
 var optimizationCodes = JsonSerializer.Deserialize<StoredOptimisationCodes>(File.OpenRead("Documents/OptimizationCodes.json"))!;

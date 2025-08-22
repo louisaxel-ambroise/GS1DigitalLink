@@ -6,6 +6,11 @@ namespace GS1DigitalLink.Utils;
 
 public static class Extensions
 {
+    internal static bool IsNumeric(this byte value)
+    {
+        return value >> 4 <= 9 && (value & 0x0F) <= 9;
+    }
+
     public static IEnumerable<T> Except<T>(this IEnumerable<T> source, T value)
     {
         return source.Where(x => !Equals(x, value));
@@ -34,20 +39,22 @@ public static class Extensions
         }
     }
 
-    private static Encodings GetEncoding(string charset, BitStream stream)
+    private static Encodings GetEncoding(Charset charset, BitStream stream)
     {
-        if (charset == "N")
-        {
-            return Encodings.Numeric;
-        }
-        else
+        static Encodings GetCharsetFromBuffer(BitStream stream)
         {
             stream.Buffer(3);
-
             var encodingIndex = Convert.ToInt32(stream.Current.ToString(), 2);
 
             return Encodings.Values.ElementAt(encodingIndex);
         }
+
+        return charset switch
+        {
+            Charset.Numeric => Encodings.Numeric,
+            Charset.Alpha => GetCharsetFromBuffer(stream),
+            _ => throw new Exception("Unknown charset")
+        };
     }
 
     public static string ReadFrom(this ApplicationIdentifier identifier, BitStream inputStream)

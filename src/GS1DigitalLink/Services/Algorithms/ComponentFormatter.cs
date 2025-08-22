@@ -7,16 +7,12 @@ public class ComponentFormatter
 {
     public static string Format(ApplicationIdentifier.AIComponent component, string value)
     {
-        if ((component.Charset == "N"))
+        return component.Charset switch
         {
-            return FormatNumeric(component, value);
-        }
-        else if(component.Charset == "X")
-        {
-            return FormatHex(component, value);
-        }
-
-        throw new Exception("Unknown charset");
+            Charset.Numeric => FormatNumeric(component, value),
+            Charset.Alpha => FormatAlpha(component, value),
+            _ => throw new Exception("Unknown charset")
+        };
     }
 
     public static string FormatNumeric(ApplicationIdentifier.AIComponent component, string value)
@@ -40,7 +36,7 @@ public class ComponentFormatter
         }
     }
 
-    public static string FormatHex(ApplicationIdentifier.AIComponent component, string value)
+    public static string FormatAlpha(ApplicationIdentifier.AIComponent component, string value)
     {
         var prefix = "";
 
